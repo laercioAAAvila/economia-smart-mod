@@ -1,0 +1,14 @@
+.gradle/
+build/
+out/
+run/
+runs/
+*.log
+*.iml
+.idea/
+.vscode/
+.codex-tmp/
+.env
+.env.*
+!.env.example
+/docs/img/

@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "economia:block/buy_shop_plain",
+    "down": "economia:block/buy_shop_plain",
+    "up": "economia:block/buy_shop_plain",
+    "north": "economia:block/buy_shop_front",
+    "south": "economia:block/buy_shop_plain",
+    "east": "economia:block/buy_shop_side",
+    "west": "economia:block/buy_shop_side"
+  }
+}

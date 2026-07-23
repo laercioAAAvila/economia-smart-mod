@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: economia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: economia
+      POSTGRES_USER: economia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD in your local environment}
+    ports:
+      - "55432:5432"
+    volumes:
+      - economia-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  economia-postgres-data:

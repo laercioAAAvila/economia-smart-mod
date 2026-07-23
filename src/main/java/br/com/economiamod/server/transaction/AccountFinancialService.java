@@ -1,0 +1,171 @@
+package br.com.economiamod.server.transaction;
+
+import br.com.economiamod.common.account.AccountStatus;
+import br.com.economiamod.common.credit.CreditMath;
+import br.com.economiamod.server.persistence.EconomyDatabase;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Optional;
+import java.util.UUID;
+
+public final class AccountFinancialService {
+    private final AccountFinancialRepository repository;
+    private final PaymentAccountRepository paymentRepository = new PaymentAccountRepository();
+    private final PaymentTransactionWriter paymentTransactionWriter = new PaymentTransactionWriter();
+    private final AccountTransactionWriter transactionWriter;
+
+    public AccountFinancialService() {
+        this(new AccountFinancialRepository(), new AccountTransactionWriter());
+    }
+
+    AccountFinancialService(AccountFinancialRepository repository, AccountTransactionWriter transactionWriter) {
+        this.repository = repository;
+        this.transactionWriter = transactionWriter;
+    }
+
+    public FinancialOperationResult deposit(UUID playerUuid, UUID accountId, long amount, String idempotencyKey) throws SQLException {
+        requirePositive(amount);
+        return creditBalance(playerUuid, accountId, amount, idempotencyKey, EconomyTransactionType.DEPOSIT);
+    }
+
+    public FinancialOperationResult withdraw(UUID playerUuid, UUID accountId, long amount, String idempotencyKey) throws SQLException {
+        requirePositive(amount);
+
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                Optional<FinancialOperationResult> duplicate = transactionWriter.findCompletedTransaction(connection, idempotencyKey);
+                if (duplicate.isPresent()) {
+                    connection.commit();
+                    return duplicate.get();
+                }
+
+                AccountFinancialSnapshot account = repository.lockPlayerAccount(connection, accountId).orElse(null);
+                if (!active(account)) {
+                    connection.rollback();
+                    return FinancialOperationResult.inactiveAccount();
+                }
+
+                long available = CreditMath.availableBalance(account.balance(), account.principalOutstanding(), account.interestOutstanding());
+                if (available < amount) {
+                    connection.rollback();
+                    return FinancialOperationResult.insufficientBalance();
+                }
+
+                UUID transactionId = UUID.randomUUID();
+                long balanceAfter = account.balance() - amount;
+                repository.updateBalance(connection, accountId, balanceAfter);
+                transactionWriter.insertTransaction(connection, transactionId, idempotencyKey, EconomyTransactionType.WITHDRAW, amount, playerUuid, accountId, null);
+                transactionWriter.insertLedger(connection, transactionId, accountId, LedgerEntryType.DEBIT, amount, account.balance(), balanceAfter);
+                connection.commit();
+                return FinancialOperationResult.completed(transactionId, balanceAfter);
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
+
+    public FinancialOperationResult transfer(UUID playerUuid, UUID sourceAccountId, UUID destinationAccountId, long amount, UUID cardId, String idempotencyKey) throws SQLException {
+        requirePositive(amount);
+
+        if (sourceAccountId.equals(destinationAccountId)) {
+            return FinancialOperationResult.completed(null, 0L);
+        }
+
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                if (paymentTransactionWriter.completedTransactionExists(connection, idempotencyKey)) {
+                    connection.commit();
+                    return FinancialOperationResult.duplicate(null, 0L);
+                }
+
+                paymentRepository.lockAccountsOrdered(connection, sourceAccountId, destinationAccountId);
+                PaymentAccountSnapshot source = paymentRepository.findPaymentAccount(connection, sourceAccountId).orElse(null);
+                PaymentAccountSnapshot destination = paymentRepository.findPaymentAccount(connection, destinationAccountId).orElse(null);
+                if (!active(source) || !active(destination)) {
+                    connection.rollback();
+                    return FinancialOperationResult.inactiveAccount();
+                }
+
+                long available = CreditMath.availableBalance(source.balance(), source.principalOutstanding(), source.interestOutstanding());
+                if (available < amount) {
+                    connection.rollback();
+                    return FinancialOperationResult.insufficientBalance();
+                }
+
+                UUID transactionId = UUID.randomUUID();
+                long sourceAfter = source.balance() - amount;
+                long destinationAfter = Math.addExact(destination.balance(), amount);
+                paymentRepository.updateBalance(connection, sourceAccountId, sourceAfter);
+                paymentRepository.updateBalance(connection, destinationAccountId, destinationAfter);
+                if (cardId == null) {
+                    paymentTransactionWriter.insertTransferTransaction(connection, transactionId, idempotencyKey, amount, playerUuid, sourceAccountId, destinationAccountId);
+                } else {
+                    paymentTransactionWriter.insertDebitTransaction(connection, transactionId, idempotencyKey, amount, playerUuid, sourceAccountId, destinationAccountId, cardId);
+                }
+                paymentTransactionWriter.insertLedger(connection, transactionId, sourceAccountId, LedgerEntryType.DEBIT, amount, source.balance(), sourceAfter);
+                paymentTransactionWriter.insertLedger(connection, transactionId, destinationAccountId, LedgerEntryType.CREDIT, amount, destination.balance(), destinationAfter);
+                connection.commit();
+                return FinancialOperationResult.completed(transactionId, destinationAfter);
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
+
+    private FinancialOperationResult creditBalance(UUID playerUuid, UUID accountId, long amount, String idempotencyKey, EconomyTransactionType transactionType) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                Optional<FinancialOperationResult> duplicate = transactionWriter.findCompletedTransaction(connection, idempotencyKey);
+                if (duplicate.isPresent()) {
+                    connection.commit();
+                    return duplicate.get();
+                }
+
+                AccountFinancialSnapshot account = repository.lockPlayerAccount(connection, accountId).orElse(null);
+                if (!active(account)) {
+                    connection.rollback();
+                    return FinancialOperationResult.inactiveAccount();
+                }
+
+                UUID transactionId = UUID.randomUUID();
+                long balanceAfter = Math.addExact(account.balance(), amount);
+                repository.updateBalance(connection, accountId, balanceAfter);
+                transactionWriter.insertTransaction(connection, transactionId, idempotencyKey, transactionType, amount, playerUuid, null, accountId);
+                transactionWriter.insertLedger(connection, transactionId, accountId, LedgerEntryType.CREDIT, amount, account.balance(), balanceAfter);
+                connection.commit();
+                return FinancialOperationResult.completed(transactionId, balanceAfter);
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
+
+    private boolean active(AccountFinancialSnapshot account) {
+        return account != null && AccountStatus.ACTIVE.name().equals(account.status());
+    }
+
+    private boolean active(PaymentAccountSnapshot account) {
+        return account != null && AccountStatus.ACTIVE.name().equals(account.status());
+    }
+
+    private void requirePositive(long amount) {
+        if (amount <= 0L) {
+            throw new IllegalArgumentException("amount must be positive");
+        }
+    }
+}

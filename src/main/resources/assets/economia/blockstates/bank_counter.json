@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "economia:block/bank_counter" },
+    "facing=east": { "model": "economia:block/bank_counter", "y": 90 },
+    "facing=south": { "model": "economia:block/bank_counter", "y": 180 },
+    "facing=west": { "model": "economia:block/bank_counter", "y": 270 }
+  }
+}
