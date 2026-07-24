@@ -17,7 +17,7 @@ public final class AuditLogService {
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, UUID.randomUUID());
-            statement.setObject(2, actorPlayerUuid);
+            setNullableUuid(statement, 2, actorPlayerUuid);
             statement.setString(3, AuditActorType.ADMIN.name());
             statement.setString(4, action);
             statement.setString(5, targetType);

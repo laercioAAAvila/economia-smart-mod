@@ -11,7 +11,6 @@ import br.com.economiamod.common.network.SecureAccountPayload;
 import com.mojang.blaze3d.platform.InputConstants;
 import java.util.List;
 import java.util.UUID;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -370,7 +369,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         recoverPasswordButton = addRenderableWidget(button(leftPos + 20, topPos + 126, 150, "screen.economia.atm.recover_password", () -> secure(SecureAccountAction.RECOVER_PASSWORD)));
 
         withdrawButton = addRenderableWidget(button(leftPos + 118, topPos + 104, 62, "screen.economia.atm.withdraw", () -> openPasswordModal(PendingSensitiveAction.WITHDRAW)));
-        depositButton = addRenderableWidget(button(leftPos + 188, topPos + 104, 72, "screen.economia.atm.deposit", () -> commandAndRefresh("economia atm depositar-tudo")));
+        depositButton = addRenderableWidget(button(leftPos + 188, topPos + 104, 72, "screen.economia.atm.deposit", this::deposit));
         balanceButton = addRenderableWidget(button(leftPos + 20, topPos + 126, 90, "screen.economia.atm.balance", this::requestAccountSummary));
 
         debitCardButton = addRenderableWidget(button(leftPos + 20, topPos + 94, 74, "screen.economia.atm.debit_card", () -> issueCard(CardType.DEBIT)));
@@ -467,6 +466,11 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
                 accountPassword,
                 ""
         ));
+        requestAccountSummary();
+    }
+
+    private void deposit() {
+        PacketDistributor.sendToServer(new SecureAccountPayload(SecureAccountAction.DEPOSIT, "", "", ""));
         requestAccountSummary();
     }
 
@@ -1009,18 +1013,6 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         cardListDownButton.active = visible && cardListOffset < maxCardListOffset();
         blockListedCardButton.active = actionable && !"BLOCKED".equals(selected.status());
         disableListedCardButton.active = actionable;
-    }
-
-    private void command(String command) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player != null && minecraft.player.connection != null) {
-            minecraft.player.connection.sendCommand(command);
-        }
-    }
-
-    private void commandAndRefresh(String command) {
-        command(command);
-        requestAccountSummary();
     }
 
     private enum AtmView {

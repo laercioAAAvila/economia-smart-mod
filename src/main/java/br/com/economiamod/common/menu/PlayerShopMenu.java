@@ -451,7 +451,7 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             return;
         }
         if (operations <= 0) {
-            player.sendSystemMessage(Component.translatable("commands.economia.shop.shop_cannot_pay"));
+            sendShopPayoutBlocked(player);
             return;
         }
         int totalQuantity = safeItemCount(operationQuantity, operations);
@@ -1168,6 +1168,49 @@ public class PlayerShopMenu extends AbstractContainerMenu {
                     : "commands.economia.shop.insufficient_balance"));
         } catch (SQLException | RuntimeException exception) {
             EconomiaMod.LOGGER.warn("Falha ao explicar pagamento recusado da loja.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.card_failed"));
+        }
+    }
+
+    private void sendShopPayoutBlocked(ServerPlayer player) {
+        if (price <= 0L) {
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+            return;
+        }
+        ItemStack target = cardContainer.getItem(0);
+        if (target.isEmpty()) {
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.receive_method_required"));
+            return;
+        }
+        if (MoneyStackCalculator.isBanknote(target)) {
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.cash_reserve_insufficient"));
+            return;
+        }
+        try {
+            CardValidationResult card = cardValidationService.validate(target);
+            if (card.type() != CardValidationResultType.VALID) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.receive_card_invalid"));
+                return;
+            }
+            if (ownerPlayerUuid == null) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.owner_account_missing"));
+                return;
+            }
+            UUID ownerAccountId = accountQueryService.findActiveAccountIdByPlayer(ownerPlayerUuid).orElse(null);
+            if (ownerAccountId == null) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.owner_account_missing"));
+                return;
+            }
+            var summary = accountQueryService.findBalanceSummary(ownerAccountId).orElse(null);
+            if (summary == null) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.owner_account_missing"));
+                return;
+            }
+            player.sendSystemMessage(Component.translatable(summary.availableBalance() < price
+                    ? "commands.economia.shop.shop_cannot_pay"
+                    : "commands.economia.shop.trade_failed"));
+        } catch (SQLException | RuntimeException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao explicar pagamento da loja de compra.", exception);
             player.sendSystemMessage(Component.translatable("commands.economia.shop.card_failed"));
         }
     }

@@ -126,6 +126,7 @@ public final class SecureAccountPayloadHandler {
                 case REFRESH_CARDS -> syncCards(serverPlayer);
                 case BLOCK_CARD_BY_ID -> blockCardById(serverPlayer, payload);
                 case DISABLE_CARD_BY_ID -> disableCardById(serverPlayer, payload);
+                case DEPOSIT -> deposit(serverPlayer, payload);
             }
         } catch (SQLException | RuntimeException exception) {
             EconomiaMod.LOGGER.warn("Falha ao processar acao segura de conta bancaria.", exception);
@@ -533,6 +534,21 @@ public final class SecureAccountPayloadHandler {
         CashAccountOperationResult result = CASH_OPERATIONS.withdraw(player, session, amount, "atm:withdraw:" + player.getUUID() + ":" + stableRequestId(payload.requestId()));
         if (result.type() == CashAccountOperationResultType.COMPLETED) {
             player.sendSystemMessage(Component.translatable("commands.economia.atm.withdraw.success", result.amount(), result.balanceAfter()));
+            syncAccountSummary(player, session.accountId());
+            return;
+        }
+        player.sendSystemMessage(Component.translatable("commands.economia.atm.operation." + result.type().name().toLowerCase()));
+    }
+
+    private static void deposit(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
+        BankSession session = requireSession(player);
+        if (session == null) {
+            return;
+        }
+
+        CashAccountOperationResult result = CASH_OPERATIONS.depositAll(player, session, "atm:deposit:" + player.getUUID() + ":" + stableRequestId(payload.requestId()));
+        if (result.type() == CashAccountOperationResultType.COMPLETED) {
+            player.sendSystemMessage(Component.translatable("commands.economia.atm.deposit.success", result.amount(), result.balanceAfter()));
             syncAccountSummary(player, session.accountId());
             return;
         }

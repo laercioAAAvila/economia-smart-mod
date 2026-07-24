@@ -24,7 +24,8 @@ public enum SecureAccountAction {
     PAY_ALL_INVOICES(20),
     REFRESH_CARDS(21),
     BLOCK_CARD_BY_ID(22),
-    DISABLE_CARD_BY_ID(23);
+    DISABLE_CARD_BY_ID(23),
+    DEPOSIT(24);
 
     private final int id;
 

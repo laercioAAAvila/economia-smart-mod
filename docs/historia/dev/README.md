@@ -35,6 +35,7 @@ Esta pasta traduz a historia funcional de `docs/historia/geral` em decisoes tecn
 | `CHK-DEV-21` | `21-checklist-auditoria-performance-seguranca.md` | `HIST-GERAL-03`, `HIST-GERAL-04`, `HIST-GERAL-08` |
 | `CHK-DEV-22` | `22-checklist-ui-atm-concorrencia-dinheiro.md` | `HIST-GERAL-02`, `HIST-GERAL-03`, `HIST-GERAL-04`, `HIST-GERAL-08` |
 | `CHK-DEV-23` | `23-checklist-cartoes-tooltip-lojas-feedback.md` | `HIST-GERAL-03`, `HIST-GERAL-05` |
+| `CHK-DEV-24` | `24-checklist-botoes-lojas-feedback.md` | `HIST-GERAL-05` |
 
 ## Principios tecnicos
 
