@@ -56,7 +56,18 @@ public final class CashAccountOperationService {
     }
 
     public CashAccountOperationResult withdraw(ServerPlayer player, BankSession session, long amount, String idempotencyKey) throws SQLException {
-        BanknoteStackPlan plan = cashInventoryService.buildWithdrawalPlan(amount);
+        return withdraw(player, session, amount, null, idempotencyKey);
+    }
+
+    public CashAccountOperationResult withdraw(ServerPlayer player, BankSession session, long amount, Long banknoteValue, String idempotencyKey) throws SQLException {
+        BanknoteStackPlan plan;
+        try {
+            plan = banknoteValue == null
+                    ? cashInventoryService.buildWithdrawalPlan(amount)
+                    : cashInventoryService.buildWithdrawalPlan(amount, banknoteValue);
+        } catch (IllegalArgumentException exception) {
+            return CashAccountOperationResult.invalidDenomination();
+        }
         if (!cashInventoryService.canInsert(player, plan)) {
             return CashAccountOperationResult.insufficientInventorySpace();
         }

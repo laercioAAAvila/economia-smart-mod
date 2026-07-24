@@ -3,6 +3,7 @@ package br.com.economiamod.common.money;
 import br.com.economiamod.registry.ModItems;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -73,6 +74,15 @@ public final class MoneyStackCalculator {
         return result;
     }
 
+    public static Optional<Item> banknoteItem(long value) {
+        for (MoneyDenomination denomination : MoneyDenomination.values()) {
+            if (denomination.value() == value) {
+                return Optional.of(itemFor(denomination));
+            }
+        }
+        return Optional.empty();
+    }
+
     private static Item itemFor(MoneyDenomination denomination) {
         return switch (denomination) {
             case NOTE_1 -> ModItems.BANKNOTE_1.get();
@@ -86,4 +96,3 @@ public final class MoneyStackCalculator {
         };
     }
 }
-

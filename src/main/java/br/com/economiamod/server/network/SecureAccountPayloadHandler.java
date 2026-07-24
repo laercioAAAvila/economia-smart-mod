@@ -531,7 +531,17 @@ public final class SecureAccountPayloadHandler {
             return;
         }
 
-        CashAccountOperationResult result = CASH_OPERATIONS.withdraw(player, session, amount, "atm:withdraw:" + player.getUUID() + ":" + stableRequestId(payload.requestId()));
+        Long banknoteValue = null;
+        if (!payload.newPassword().isBlank()) {
+            try {
+                banknoteValue = Long.parseLong(payload.newPassword());
+            } catch (NumberFormatException exception) {
+                player.sendSystemMessage(Component.translatable("commands.economia.atm.operation.invalid_denomination"));
+                return;
+            }
+        }
+
+        CashAccountOperationResult result = CASH_OPERATIONS.withdraw(player, session, amount, banknoteValue, "atm:withdraw:" + player.getUUID() + ":" + stableRequestId(payload.requestId()));
         if (result.type() == CashAccountOperationResultType.COMPLETED) {
             player.sendSystemMessage(Component.translatable("commands.economia.atm.withdraw.success", result.amount(), result.balanceAfter()));
             syncAccountSummary(player, session.accountId());
@@ -569,7 +579,7 @@ public final class SecureAccountPayloadHandler {
             return;
         }
 
-        CardIssueResult result = CARD_ISSUE_SERVICE.issue(new CardIssueRequest(session.accountId(), cardType, null, 0L));
+        CardIssueResult result = CARD_ISSUE_SERVICE.issue(new CardIssueRequest(session.accountId(), cardType, player.getGameProfile().getName(), 0L));
         if (result.type() == CardIssueResultType.ISSUED) {
             var stack = new CardItemDataService().createCardStack(
                     result.cardType(),

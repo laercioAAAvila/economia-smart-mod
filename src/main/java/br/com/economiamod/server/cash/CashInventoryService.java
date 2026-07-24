@@ -38,6 +38,19 @@ public final class CashInventoryService {
 
     public BanknoteStackPlan buildWithdrawalPlan(long amount) {
         Map<Item, Integer> banknotes = MoneyStackCalculator.buildBanknotes(amount);
+        return buildWithdrawalPlan(amount, banknotes);
+    }
+
+    public BanknoteStackPlan buildWithdrawalPlan(long amount, long banknoteValue) {
+        if (amount <= 0L || banknoteValue <= 0L || amount % banknoteValue != 0L) {
+            throw new IllegalArgumentException("amount is not compatible with banknote value");
+        }
+        Item item = MoneyStackCalculator.banknoteItem(banknoteValue)
+                .orElseThrow(() -> new IllegalArgumentException("unsupported banknote value"));
+        return buildWithdrawalPlan(amount, Map.of(item, Math.toIntExact(amount / banknoteValue)));
+    }
+
+    private BanknoteStackPlan buildWithdrawalPlan(long amount, Map<Item, Integer> banknotes) {
         List<ItemStack> stacks = new ArrayList<>();
         for (Map.Entry<Item, Integer> entry : banknotes.entrySet()) {
             int remaining = entry.getValue();

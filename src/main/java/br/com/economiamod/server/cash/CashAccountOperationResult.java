@@ -17,8 +17,11 @@ public record CashAccountOperationResult(CashAccountOperationResultType type, lo
         return new CashAccountOperationResult(CashAccountOperationResultType.INSUFFICIENT_INVENTORY_SPACE, 0L, 0L);
     }
 
+    public static CashAccountOperationResult invalidDenomination() {
+        return new CashAccountOperationResult(CashAccountOperationResultType.INVALID_DENOMINATION, 0L, 0L);
+    }
+
     public static CashAccountOperationResult inactiveAccount() {
         return new CashAccountOperationResult(CashAccountOperationResultType.INACTIVE_ACCOUNT, 0L, 0L);
     }
 }
-

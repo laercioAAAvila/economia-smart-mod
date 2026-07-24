@@ -28,6 +28,7 @@ public final class CardManagementService {
                        debit_daily_limit
                   FROM economy_cards
                  WHERE account_id = ?
+                   AND status <> 'DISABLED'
                  ORDER BY created_at DESC, id
                  LIMIT 64
                 """;

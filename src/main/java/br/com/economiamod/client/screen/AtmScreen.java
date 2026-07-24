@@ -66,6 +66,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
     private EditBox securityPassword;
     private EditBox securityNewPassword;
     private EditBox withdrawAmount;
+    private EditBox withdrawDenomination;
     private EditBox accountCreditLimit;
     private EditBox cardCreditLimit;
     private EditBox debitDailyLimit;
@@ -349,7 +350,10 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         newPassword = addRenderableWidget(passwordBox(leftPos + 20, topPos + 104, 150, "screen.economia.atm.new_password"));
         securityPassword = addRenderableWidget(passwordBox(leftPos + 24, topPos + 94, 150, "screen.economia.atm.current_password"));
         securityNewPassword = addRenderableWidget(passwordBox(leftPos + 24, topPos + 124, 150, "screen.economia.atm.new_password"));
-        withdrawAmount = addRenderableWidget(textBox(leftPos + 20, topPos + 104, 90, "screen.economia.atm.withdraw_amount"));
+        withdrawAmount = addRenderableWidget(textBox(leftPos + 20, topPos + 104, 76, "screen.economia.atm.withdraw_amount"));
+        withdrawDenomination = addRenderableWidget(textBox(leftPos + 104, topPos + 104, 48, "screen.economia.atm.withdraw_denomination"));
+        withdrawDenomination.setMaxLength(3);
+        withdrawDenomination.setFilter(value -> value.matches("[0-9]*"));
         accountCreditLimit = addRenderableWidget(textBox(leftPos + 24, topPos + 130, 96, "screen.economia.atm.account_credit_limit"));
         cardCreditLimit = addRenderableWidget(textBox(leftPos + 134, topPos + 116, 92, "screen.economia.atm.card_credit_limit"));
         debitDailyLimit = addRenderableWidget(textBox(leftPos + 20, topPos + 138, 82, "screen.economia.atm.debit_daily_limit"));
@@ -368,8 +372,8 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         createAccountButton = addRenderableWidget(button(leftPos + 20, topPos + 126, 150, "screen.economia.atm.create_account", () -> secure(SecureAccountAction.CREATE_ACCOUNT)));
         recoverPasswordButton = addRenderableWidget(button(leftPos + 20, topPos + 126, 150, "screen.economia.atm.recover_password", () -> secure(SecureAccountAction.RECOVER_PASSWORD)));
 
-        withdrawButton = addRenderableWidget(button(leftPos + 118, topPos + 104, 62, "screen.economia.atm.withdraw", () -> openPasswordModal(PendingSensitiveAction.WITHDRAW)));
-        depositButton = addRenderableWidget(button(leftPos + 188, topPos + 104, 72, "screen.economia.atm.deposit", this::deposit));
+        withdrawButton = addRenderableWidget(button(leftPos + 160, topPos + 104, 62, "screen.economia.atm.withdraw", () -> openPasswordModal(PendingSensitiveAction.WITHDRAW)));
+        depositButton = addRenderableWidget(button(leftPos + 230, topPos + 104, 72, "screen.economia.atm.deposit", this::deposit));
         balanceButton = addRenderableWidget(button(leftPos + 20, topPos + 126, 90, "screen.economia.atm.balance", this::requestAccountSummary));
 
         debitCardButton = addRenderableWidget(button(leftPos + 20, topPos + 94, 74, "screen.economia.atm.debit_card", () -> issueCard(CardType.DEBIT)));
@@ -464,7 +468,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
                 SecureAccountAction.WITHDRAW,
                 withdrawAmount.getValue(),
                 accountPassword,
-                ""
+                withdrawDenomination.getValue()
         ));
         requestAccountSummary();
     }
@@ -629,6 +633,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
                 securityPassword,
                 securityNewPassword,
                 withdrawAmount,
+                withdrawDenomination,
                 accountCreditLimit,
                 cardCreditLimit,
                 debitDailyLimit,
@@ -668,7 +673,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
             case LOGIN -> setVisible(true, username, password, passwordLoginButton, cardLoginButton);
             case CREATE -> setVisible(true, username, password, createAccountButton);
             case RECOVER -> setVisible(true, username, newPassword, recoverPasswordButton);
-            case CASH -> setVisible(true, withdrawAmount, withdrawButton, depositButton);
+            case CASH -> setVisible(true, withdrawAmount, withdrawDenomination, withdrawButton, depositButton);
             case CARDS -> {
                 setVisible(true, debitCardButton, creditCardButton, comboCardButton, debitDailyLimit, updateDebitDailyLimitButton, cardListUpButton, cardListDownButton, blockListedCardButton, disableListedCardButton);
                 updateCardListButtons();
@@ -702,6 +707,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
                 || isFocused(securityPassword)
                 || isFocused(securityNewPassword)
                 || isFocused(withdrawAmount)
+                || isFocused(withdrawDenomination)
                 || isFocused(accountCreditLimit)
                 || isFocused(cardCreditLimit)
                 || isFocused(debitDailyLimit)
@@ -893,7 +899,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
     private void setContentActive(boolean active) {
         for (AbstractWidget widget : List.of(
                 loginTab, createTab, recoverTab, cashTab, cardsTab, creditTab, transferTab, securityTab, goldInfoTab,
-                username, password, newPassword, securityPassword, securityNewPassword, withdrawAmount,
+                username, password, newPassword, securityPassword, securityNewPassword, withdrawAmount, withdrawDenomination,
                 accountCreditLimit, cardCreditLimit, debitDailyLimit, transferAccountNumber, transferAmount,
                 passwordLoginButton, cardLoginButton, createAccountButton, recoverPasswordButton,
                 withdrawButton, depositButton, balanceButton, debitCardButton, creditCardButton, comboCardButton,
@@ -913,7 +919,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
     private void setContentVisible(boolean visible) {
         for (AbstractWidget widget : List.of(
                 loginTab, createTab, recoverTab, cashTab, cardsTab, creditTab, transferTab, securityTab, goldInfoTab,
-                username, password, newPassword, securityPassword, securityNewPassword, withdrawAmount,
+                username, password, newPassword, securityPassword, securityNewPassword, withdrawAmount, withdrawDenomination,
                 accountCreditLimit, cardCreditLimit, debitDailyLimit, transferAccountNumber, transferAmount,
                 passwordLoginButton, cardLoginButton, createAccountButton, recoverPasswordButton,
                 withdrawButton, depositButton, balanceButton, debitCardButton, creditCardButton, comboCardButton,

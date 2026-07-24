@@ -37,6 +37,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
@@ -161,8 +162,7 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         if (shopKind == ShopKind.SELL) {
             return paymentMethodReady(creditPayment) && maxSellShopOperations(operationQuantity, 1, creditPayment) > 0;
         }
-        return maxBuyShopOperations(operationQuantity, 1) > 0
-                && paymentMethodReady(false);
+        return maxBuyShopOperations(operationQuantity, 1) > 0;
     }
 
     public int availableStock() {
@@ -406,13 +406,35 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             return false;
         }
         if (MoneyStackCalculator.isBanknote(payment)) {
-            if (ShopMoneyContainerOps.moneyIn(cardContainer) < amount) {
+            OptionalLong banknoteValue = MoneyStackCalculator.banknoteValue(payment);
+            if (banknoteValue.isEmpty() || ShopMoneyContainerOps.moneyIn(cardContainer) < amount) {
                 player.sendSystemMessage(Component.translatable("commands.economia.shop.insufficient_cash"));
                 return false;
             }
-            if (!ShopMoneyContainerOps.movePaymentToCashReserve(cardContainer, cashContainer)) {
+            int paidCount = banknoteCountForPayment(payment, amount, banknoteValue.getAsLong());
+            ItemStack paidStack = payment.copy();
+            paidStack.setCount(paidCount);
+            long paidAmount = Math.multiplyExact(banknoteValue.getAsLong(), paidCount);
+            long change = paidAmount - amount;
+            if (!ShopMoneyContainerOps.canAddToCashReserve(cashContainer, paidStack)) {
                 player.sendSystemMessage(Component.translatable("commands.economia.shop.stock_full"));
                 return false;
+            }
+            boolean physicalChange = change > 0L && ShopMoneyContainerOps.canRemoveCashReserve(cashContainer, change);
+            if (change > 0L && !physicalChange && !payChangeOnline(player, requestId, change)) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.change_unavailable"));
+                return false;
+            }
+            if (!ShopMoneyContainerOps.addToCashReserve(cashContainer, paidStack)) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.stock_full"));
+                return false;
+            }
+            payment.shrink(paidCount);
+            if (payment.isEmpty()) {
+                cardContainer.setItem(0, ItemStack.EMPTY);
+            }
+            if (physicalChange) {
+                ShopMoneyContainerOps.givePayment(player, ShopMoneyContainerOps.removeCashReserveStacks(cashContainer, change));
             }
             return true;
         }
@@ -421,6 +443,11 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             return false;
         }
         return true;
+    }
+
+    private int banknoteCountForPayment(ItemStack payment, long amount, long banknoteValue) {
+        long count = ((amount - 1L) / banknoteValue) + 1L;
+        return Math.toIntExact(Math.min(payment.getCount(), count));
     }
 
     private void sellToShop(ServerPlayer player, UUID requestId, int requestedOperations) {
@@ -1179,7 +1206,7 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         }
         ItemStack target = cardContainer.getItem(0);
         if (target.isEmpty()) {
-            player.sendSystemMessage(Component.translatable("commands.economia.shop.receive_method_required"));
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.cash_reserve_insufficient"));
             return;
         }
         if (MoneyStackCalculator.isBanknote(target)) {
@@ -1217,11 +1244,14 @@ public class PlayerShopMenu extends AbstractContainerMenu {
 
     private int affordableOperationsForShopPayout() {
         ItemStack payment = cardContainer.getItem(0);
-        if (payment.isEmpty() || price <= 0L) {
+        if (price <= 0L) {
             return 0;
         }
+        if (payment.isEmpty()) {
+            return affordableCashPayoutOperations();
+        }
         if (MoneyStackCalculator.isBanknote(payment)) {
-            return Math.toIntExact(Math.min(Integer.MAX_VALUE, ShopMoneyContainerOps.moneyIn(cashContainer) / price));
+            return affordableCashPayoutOperations();
         }
         try {
             CardValidationResult card = cardValidationService.validate(payment);
@@ -1238,6 +1268,19 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             EconomiaMod.LOGGER.warn("Falha ao calcular pagamento disponivel da loja.", exception);
             return 0;
         }
+    }
+
+    private int affordableCashPayoutOperations() {
+        if (price <= 0L) {
+            return 0;
+        }
+        int max = Math.toIntExact(Math.min(Integer.MAX_VALUE, ShopMoneyContainerOps.moneyIn(cashContainer) / price));
+        for (int operations = max; operations > 0; operations--) {
+            if (ShopMoneyContainerOps.canRemoveCashReserve(cashContainer, safePrice(operations))) {
+                return operations;
+            }
+        }
+        return 0;
     }
 
     private long debitDailyRemaining(UUID cardId) throws SQLException {
@@ -1297,7 +1340,7 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         }
         ItemStack payment = cardContainer.getItem(0);
         if (payment.isEmpty()) {
-            return false;
+            return shopKind == ShopKind.BUY && affordableCashPayoutOperations() > 0;
         }
         if (MoneyStackCalculator.isBanknote(payment)) {
             if (shopKind == ShopKind.BUY) {
@@ -1328,22 +1371,25 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         }
         ItemStack target = cardContainer.getItem(0);
         if (target.isEmpty()) {
-            player.sendSystemMessage(Component.translatable("commands.economia.shop.no_card"));
-            return false;
+            return payCustomerCash(player, amount);
         }
         if (MoneyStackCalculator.isBanknote(target)) {
-            if (!ShopMoneyContainerOps.removeCashReserve(cashContainer, amount)) {
-                player.sendSystemMessage(Component.translatable("commands.economia.shop.cash_reserve_insufficient"));
-                return false;
-            }
-            ShopMoneyContainerOps.givePayment(player, amount);
-            return true;
+            return payCustomerCash(player, amount);
         }
         if (!payCustomerCard(player, requestId, amount)) {
             player.sendSystemMessage(Component.translatable("commands.economia.shop.card_failed"));
             return false;
         }
         return true;
+    }
+
+    private boolean payCustomerCash(ServerPlayer player, long amount) {
+        if (ShopMoneyContainerOps.canRemoveCashReserve(cashContainer, amount)) {
+            ShopMoneyContainerOps.givePayment(player, ShopMoneyContainerOps.removeCashReserveStacks(cashContainer, amount));
+            return true;
+        }
+        player.sendSystemMessage(Component.translatable("commands.economia.shop.cash_reserve_insufficient"));
+        return false;
     }
 
     private boolean payOwnerWithCard(ServerPlayer player, UUID requestId, long amount, boolean creditPayment) {
@@ -1371,6 +1417,29 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             return false;
         } catch (SQLException exception) {
             EconomiaMod.LOGGER.warn("Falha ao pagar loja com cartao.", exception);
+            return false;
+        }
+    }
+
+    private boolean payChangeOnline(ServerPlayer player, UUID requestId, long amount) {
+        return transferOwnerToPlayerAccount(player, requestId, amount, "shop-cash-change");
+    }
+
+    private boolean transferOwnerToPlayerAccount(ServerPlayer player, UUID requestId, long amount, String keyPrefix) {
+        if (ownerPlayerUuid == null || amount <= 0L) {
+            return false;
+        }
+        try {
+            UUID ownerAccountId = accountQueryService.findActiveAccountIdByPlayer(ownerPlayerUuid).orElse(null);
+            UUID customerAccountId = accountQueryService.findActiveAccountIdByPlayer(player.getUUID()).orElse(null);
+            if (ownerAccountId == null || customerAccountId == null) {
+                return false;
+            }
+            String key = keyPrefix + ":" + commercialBlockId + ":" + player.getUUID() + ":" + stableRequestId(requestId);
+            var result = accountFinancialService.transfer(player.getUUID(), ownerAccountId, customerAccountId, amount, null, key);
+            return result.type() == FinancialOperationResultType.COMPLETED || result.type() == FinancialOperationResultType.DUPLICATE_COMPLETED;
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao pagar cliente online.", exception);
             return false;
         }
     }

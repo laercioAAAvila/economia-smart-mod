@@ -5,6 +5,6 @@ public enum CashAccountOperationResultType {
     NO_MONEY,
     INSUFFICIENT_BALANCE,
     INSUFFICIENT_INVENTORY_SPACE,
+    INVALID_DENOMINATION,
     INACTIVE_ACCOUNT
 }
-
