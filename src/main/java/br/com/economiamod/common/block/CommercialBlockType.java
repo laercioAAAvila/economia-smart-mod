@@ -4,6 +4,6 @@ public enum CommercialBlockType {
     ATM,
     SELL_SHOP,
     BUY_SHOP,
-    BANK_COUNTER
+    BANK_COUNTER,
+    MAIL
 }
-

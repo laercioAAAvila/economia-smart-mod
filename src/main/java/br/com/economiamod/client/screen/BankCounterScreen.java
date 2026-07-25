@@ -78,7 +78,7 @@ public final class BankCounterScreen extends AbstractContainerScreen<BankCounter
         graphics.drawString(font, Component.translatable("screen.economia.bank_counter.block_value", money(menu.goldBuyBlockValue())), 150, 120, 0xD7E8E1, false);
         graphics.drawString(font, Component.translatable("screen.economia.bank_counter.sell_percent", menu.goldSellPercent()), 150, 132, 0xD7E8E1, false);
         graphics.drawString(font, Component.translatable("screen.economia.bank_counter.buy_percent", menu.goldBuyPercent()), 34, 144, 0xD7E8E1, false);
-        graphics.drawString(font, Component.translatable("screen.economia.bank_counter.redeem"), 34, 150, 0xF6E7B0, false);
+        graphics.drawString(font, Component.translatable("screen.economia.bank_counter.redeem"), 34, 153, 0xF6E7B0, false);
         graphics.drawString(font, Component.translatable(menu.hasCard() ? "screen.economia.bank_counter.card_ready" : "screen.economia.bank_counter.card_required"), 34, 182, menu.hasCard() ? 0x80E6A8 : 0xE68E8E, false);
     }
 

@@ -38,6 +38,7 @@ public final class EconomyServerConfig {
     public static final ModConfigSpec.BooleanValue BANK_GOLD_ALLOW_PHYSICAL_NOTES;
     public static final ModConfigSpec.BooleanValue BANK_GOLD_ALLOW_CREDIT_PURCHASE;
     public static final ModConfigSpec.LongValue BANK_CARD_ISSUE_FEE;
+    public static final ModConfigSpec.LongValue MAIL_PRICE_PER_OCCUPIED_SLOT;
 
     public static final ModConfigSpec.BooleanValue DYNAMIC_PRICING_ENABLED;
     public static final ModConfigSpec.IntValue DYNAMIC_PRICING_RECOVERY_HOUR;
@@ -95,6 +96,10 @@ public final class EconomyServerConfig {
         BUILDER.push("cards");
         BANK_CARD_ISSUE_FEE = BUILDER.defineInRange("issueFee", 10L, 0L, Long.MAX_VALUE);
         BUILDER.pop();
+        BUILDER.pop();
+
+        BUILDER.push("mail");
+        MAIL_PRICE_PER_OCCUPIED_SLOT = BUILDER.defineInRange("pricePerOccupiedSlot", 50L, 1L, Long.MAX_VALUE);
         BUILDER.pop();
 
         BUILDER.push("bank");

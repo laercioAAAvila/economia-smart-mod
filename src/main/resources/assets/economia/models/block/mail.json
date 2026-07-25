@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "economia:block/mail_plain",
+    "down": "economia:block/mail_plain",
+    "up": "economia:block/mail_plain",
+    "north": "economia:block/mail_front",
+    "south": "economia:block/mail_plain",
+    "east": "economia:block/mail_right",
+    "west": "economia:block/mail_left"
+  }
+}

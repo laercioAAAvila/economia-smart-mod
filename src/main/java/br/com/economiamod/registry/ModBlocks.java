@@ -21,11 +21,13 @@ public final class ModBlocks {
     public static final DeferredBlock<Block> SELL_SHOP = registerCommercialBlock("sell_shop", woodBlock(2.5F));
     public static final DeferredBlock<Block> BUY_SHOP = registerCommercialBlock("buy_shop", woodBlock(2.5F));
     public static final DeferredBlock<Block> BANK_COUNTER = registerCommercialBlock("bank_counter", metalBlock(4.0F));
+    public static final DeferredBlock<Block> MAIL = registerCommercialBlock("mail", woodBlock(2.0F));
 
     public static final DeferredItem<BlockItem> ATM_ITEM = registerBlockItem("atm", ATM);
     public static final DeferredItem<BlockItem> SELL_SHOP_ITEM = registerBlockItem("sell_shop", SELL_SHOP);
     public static final DeferredItem<BlockItem> BUY_SHOP_ITEM = registerBlockItem("buy_shop", BUY_SHOP);
     public static final DeferredItem<BlockItem> BANK_COUNTER_ITEM = registerBlockItem("bank_counter", BANK_COUNTER);
+    public static final DeferredItem<BlockItem> MAIL_ITEM = registerBlockItem("mail", MAIL);
 
     private ModBlocks() {
     }
@@ -56,4 +58,3 @@ public final class ModBlocks {
                 .sound(SoundType.WOOD);
     }
 }
-

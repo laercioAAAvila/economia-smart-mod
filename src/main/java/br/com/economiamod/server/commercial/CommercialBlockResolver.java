@@ -19,7 +19,9 @@ public final class CommercialBlockResolver {
         if (state.is(ModBlocks.BANK_COUNTER.get())) {
             return Optional.of(CommercialBlockType.BANK_COUNTER);
         }
+        if (state.is(ModBlocks.MAIL.get())) {
+            return Optional.of(CommercialBlockType.MAIL);
+        }
         return Optional.empty();
     }
 }
-

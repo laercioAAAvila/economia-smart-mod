@@ -6,9 +6,12 @@ import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.block.CommercialBlockEntity;
 import br.com.economiamod.common.block.CommercialBlockType;
 import br.com.economiamod.common.menu.BuyShopMenu;
+import br.com.economiamod.common.menu.MailMenu;
 import br.com.economiamod.common.menu.SellShopMenu;
 import br.com.economiamod.registry.ModBlocks;
 import br.com.economiamod.server.persistence.EconomyDatabaseState;
+import br.com.economiamod.server.mail.MailBlockRecord;
+import br.com.economiamod.server.mail.MailBlockRepository;
 import java.sql.SQLException;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
@@ -23,6 +26,7 @@ public final class CommercialMenuOpenService {
     private final CommercialBlockResolver blockResolver = new CommercialBlockResolver();
     private final CommercialBlockSqlService sqlService = new CommercialBlockSqlService();
     private final CommercialBlockTypeRepository blockTypeRepository = new CommercialBlockTypeRepository();
+    private final MailBlockRepository mailBlockRepository = new MailBlockRepository();
 
     public void open(ServerPlayer player, ServerLevel level, BlockPos pos, BlockState state) {
         if (!EconomyDatabaseState.isAvailable()) {
@@ -60,6 +64,11 @@ public final class CommercialMenuOpenService {
 
         if (state.is(ModBlocks.SELL_SHOP.get()) || state.is(ModBlocks.BUY_SHOP.get())) {
             openShop(level, pos, state, player);
+            return;
+        }
+
+        if (state.is(ModBlocks.MAIL.get())) {
+            openMail(level, pos, player);
         }
     }
 
@@ -134,5 +143,57 @@ public final class CommercialMenuOpenService {
                 pos
         );
         return ownerUuid;
+    }
+
+    private void openMail(ServerLevel level, BlockPos pos, ServerPlayer player) {
+        if (!(level.getBlockEntity(pos) instanceof CommercialBlockEntity blockEntity)) {
+            return;
+        }
+
+        UUID commercialBlockId = blockEntity.commercialBlockId();
+        MailBlockRecord record;
+        try {
+            record = mailBlockRepository.findActive(commercialBlockId).orElse(null);
+            if (record == null) {
+                sqlService.registerPlacedBlock(
+                        commercialBlockId,
+                        CommercialBlockType.MAIL,
+                        player.getUUID(),
+                        player.getUUID(),
+                        level.dimension().location(),
+                        pos
+                );
+                record = mailBlockRepository.findActive(commercialBlockId).orElse(null);
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao carregar Correio.", exception);
+            player.displayClientMessage(Component.translatable("commands.economia.unavailable"), true);
+            return;
+        }
+        if (record == null) {
+            player.displayClientMessage(Component.translatable("commands.economia.unavailable"), true);
+            return;
+        }
+        MailBlockRecord menuRecord = record;
+        boolean owner = player.getUUID().equals(menuRecord.ownerPlayerUuid());
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, inventory, ignored) -> new MailMenu(
+                        containerId,
+                        inventory,
+                        menuRecord.id(),
+                        menuRecord.ownerPlayerUuid(),
+                        menuRecord.ownerAccountId(),
+                        menuRecord.dimension(),
+                        menuRecord.name(),
+                        menuRecord.x(),
+                        menuRecord.y(),
+                        menuRecord.z(),
+                        pos,
+                        ModBlocks.MAIL.get(),
+                        owner,
+                        menuRecord.named()
+                ),
+                Component.translatable("screen.economia.mail.title")
+        ), data -> MailMenu.writeOpeningData(data, menuRecord, pos, owner));
     }
 }

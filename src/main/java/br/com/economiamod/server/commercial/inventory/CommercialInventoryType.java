@@ -5,6 +5,6 @@ public enum CommercialInventoryType {
     CASH_RESERVE,
     PURCHASED_ITEMS,
     BANK_STOCK,
-    GOLD_RESERVE
+    GOLD_RESERVE,
+    MAIL_RECEIVED
 }
-

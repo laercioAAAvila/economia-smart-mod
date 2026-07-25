@@ -25,7 +25,8 @@ public enum SecureAccountAction {
     REFRESH_CARDS(21),
     BLOCK_CARD_BY_ID(22),
     DISABLE_CARD_BY_ID(23),
-    DEPOSIT(24);
+    DEPOSIT(24),
+    OPERATION_HISTORY(25);
 
     private final int id;
 

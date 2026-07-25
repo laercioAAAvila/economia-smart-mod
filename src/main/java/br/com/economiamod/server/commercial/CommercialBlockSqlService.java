@@ -1,6 +1,8 @@
 package br.com.economiamod.server.commercial;
 
 import br.com.economiamod.common.block.CommercialBlockType;
+import br.com.economiamod.server.account.AccountQueryService;
+import br.com.economiamod.server.account.AccountBalanceSummary;
 import br.com.economiamod.server.commercial.inventory.CommercialInventoryRepository;
 import br.com.economiamod.server.commercial.inventory.CommercialInventoryType;
 import br.com.economiamod.server.persistence.EconomyDatabase;
@@ -13,6 +15,7 @@ import net.minecraft.resources.ResourceLocation;
 
 public final class CommercialBlockSqlService {
     private final CommercialInventoryRepository inventoryRepository = new CommercialInventoryRepository();
+    private final AccountQueryService accountQueryService = new AccountQueryService();
 
     public void registerPlacedBlock(
             UUID commercialBlockId,
@@ -27,6 +30,9 @@ public final class CommercialBlockSqlService {
                     id,
                     block_type,
                     owner_player_uuid,
+                    linked_account_id,
+                    owner_name,
+                    owner_account_number,
                     placed_by_player_uuid,
                     dimension,
                     block_x,
@@ -36,10 +42,13 @@ public final class CommercialBlockSqlService {
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO UPDATE
                     SET block_type = EXCLUDED.block_type,
                         owner_player_uuid = EXCLUDED.owner_player_uuid,
+                        linked_account_id = EXCLUDED.linked_account_id,
+                        owner_name = EXCLUDED.owner_name,
+                        owner_account_number = EXCLUDED.owner_account_number,
                         placed_by_player_uuid = EXCLUDED.placed_by_player_uuid,
                         dimension = EXCLUDED.dimension,
                         block_x = EXCLUDED.block_x,
@@ -50,16 +59,33 @@ public final class CommercialBlockSqlService {
                         removed_at = NULL
                 """;
 
+        UUID linkedAccountId = null;
+        String ownerName = null;
+        String ownerAccountNumber = null;
+        if (ownerPlayerUuid != null) {
+            linkedAccountId = accountQueryService.findActiveAccountIdByPlayer(ownerPlayerUuid).orElse(null);
+            if (linkedAccountId != null) {
+                AccountBalanceSummary summary = accountQueryService.findBalanceSummary(linkedAccountId).orElse(null);
+                if (summary != null) {
+                    ownerName = summary.username();
+                    ownerAccountNumber = summary.accountNumber();
+                }
+            }
+        }
+
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, commercialBlockId);
             statement.setString(2, blockType.name());
             statement.setObject(3, ownerPlayerUuid);
-            statement.setObject(4, placedByPlayerUuid);
-            statement.setString(5, dimension.toString());
-            statement.setInt(6, pos.getX());
-            statement.setInt(7, pos.getY());
-            statement.setInt(8, pos.getZ());
+            statement.setObject(4, linkedAccountId);
+            statement.setString(5, ownerName);
+            statement.setString(6, ownerAccountNumber);
+            statement.setObject(7, placedByPlayerUuid);
+            statement.setString(8, dimension.toString());
+            statement.setInt(9, pos.getX());
+            statement.setInt(10, pos.getY());
+            statement.setInt(11, pos.getZ());
             statement.executeUpdate();
         }
 
@@ -97,6 +123,7 @@ public final class CommercialBlockSqlService {
                 inventoryRepository.ensureSlots(commercialBlockId, CommercialInventoryType.BANK_STOCK, 16);
                 inventoryRepository.ensureSlots(commercialBlockId, CommercialInventoryType.GOLD_RESERVE, 16);
             }
+            case MAIL -> inventoryRepository.ensureSlots(commercialBlockId, CommercialInventoryType.MAIL_RECEIVED, 18);
             case ATM -> {
             }
         }

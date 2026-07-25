@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "economia:block/mail" },
+    "facing=east": { "model": "economia:block/mail", "y": 90 },
+    "facing=south": { "model": "economia:block/mail", "y": 180 },
+    "facing=west": { "model": "economia:block/mail", "y": 270 }
+  }
+}

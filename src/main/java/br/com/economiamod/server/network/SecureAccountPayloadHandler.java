@@ -7,11 +7,13 @@ import br.com.economiamod.common.invoice.InvoiceItemDataService;
 import br.com.economiamod.common.menu.AtmMenu;
 import br.com.economiamod.common.network.AtmAccountSummaryPayload;
 import br.com.economiamod.common.network.AtmCardsPayload;
+import br.com.economiamod.common.network.AtmOperationHistoryPayload;
 import br.com.economiamod.common.network.AtmSessionStatePayload;
 import br.com.economiamod.common.network.SecureAccountPayload;
 import br.com.economiamod.server.account.AccountCreditLimitResultType;
 import br.com.economiamod.server.account.AccountBalanceSummary;
 import br.com.economiamod.server.account.AccountIdentity;
+import br.com.economiamod.server.account.AccountOperationHistoryService;
 import br.com.economiamod.server.account.AccountPasswordVerificationResultType;
 import br.com.economiamod.server.account.AccountQueryService;
 import br.com.economiamod.server.account.AccountService;
@@ -75,6 +77,7 @@ public final class SecureAccountPayloadHandler {
     private static final CardIssueService CARD_ISSUE_SERVICE = new CardIssueService();
     private static final CardSecurityService CARD_SECURITY_SERVICE = new CardSecurityService();
     private static final CardManagementService CARD_MANAGEMENT_SERVICE = new CardManagementService();
+    private static final AccountOperationHistoryService ACCOUNT_HISTORY_SERVICE = new AccountOperationHistoryService();
     private static final InvoiceItemDataService INVOICE_ITEM_DATA_SERVICE = new InvoiceItemDataService();
     private static final AccountFinancialService ACCOUNT_FINANCIAL_SERVICE = new AccountFinancialService();
     private static final InvoicePaymentService INVOICE_PAYMENT_SERVICE = new InvoicePaymentService();
@@ -127,6 +130,7 @@ public final class SecureAccountPayloadHandler {
                 case BLOCK_CARD_BY_ID -> blockCardById(serverPlayer, payload);
                 case DISABLE_CARD_BY_ID -> disableCardById(serverPlayer, payload);
                 case DEPOSIT -> deposit(serverPlayer, payload);
+                case OPERATION_HISTORY -> syncOperationHistory(serverPlayer);
             }
         } catch (SQLException | RuntimeException exception) {
             EconomiaMod.LOGGER.warn("Falha ao processar acao segura de conta bancaria.", exception);
@@ -460,6 +464,7 @@ public final class SecureAccountPayloadHandler {
         }
         syncSession(player, false, "", "", false);
         PacketDistributor.sendToPlayer(player, new AtmAccountSummaryPayload(false, 0L, 0L, 0L, 0L, 0L));
+        PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(List.of()));
         player.sendSystemMessage(Component.translatable(loggedOut ? "commands.economia.logout.success" : "commands.economia.logout.no_session"));
     }
 
@@ -510,7 +515,7 @@ public final class SecureAccountPayloadHandler {
             syncAccountSummary(player, session.accountId());
             return;
         }
-        player.sendSystemMessage(Component.translatable("commands.economia.atm.card_list." + result.name().toLowerCase()));
+            player.sendSystemMessage(Component.translatable("commands.economia.atm.card_list." + result.name().toLowerCase()));
     }
 
     private static void withdraw(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
@@ -545,6 +550,7 @@ public final class SecureAccountPayloadHandler {
         if (result.type() == CashAccountOperationResultType.COMPLETED) {
             player.sendSystemMessage(Component.translatable("commands.economia.atm.withdraw.success", result.amount(), result.balanceAfter()));
             syncAccountSummary(player, session.accountId());
+            syncOperationHistory(player, session.accountId());
             return;
         }
         player.sendSystemMessage(Component.translatable("commands.economia.atm.operation." + result.type().name().toLowerCase()));
@@ -560,6 +566,7 @@ public final class SecureAccountPayloadHandler {
         if (result.type() == CashAccountOperationResultType.COMPLETED) {
             player.sendSystemMessage(Component.translatable("commands.economia.atm.deposit.success", result.amount(), result.balanceAfter()));
             syncAccountSummary(player, session.accountId());
+            syncOperationHistory(player, session.accountId());
             return;
         }
         player.sendSystemMessage(Component.translatable("commands.economia.atm.operation." + result.type().name().toLowerCase()));
@@ -667,6 +674,7 @@ public final class SecureAccountPayloadHandler {
         if (result.type() == FinancialOperationResultType.COMPLETED || result.type() == FinancialOperationResultType.DUPLICATE_COMPLETED) {
             player.sendSystemMessage(Component.translatable("commands.economia.atm.transfer.success", amount, accountNumber));
             syncAccountSummary(player, session.accountId());
+            syncOperationHistory(player, session.accountId());
             return;
         }
         player.sendSystemMessage(Component.translatable("commands.economia.atm.transfer." + result.type().name().toLowerCase()));
@@ -718,6 +726,7 @@ public final class SecureAccountPayloadHandler {
         }
         syncSession(player, false, "", "", false);
         PacketDistributor.sendToPlayer(player, new AtmAccountSummaryPayload(false, 0L, 0L, 0L, 0L, 0L));
+        PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(List.of()));
         player.sendSystemMessage(Component.translatable("commands.economia.atm.security.card_blocked"));
     }
 
@@ -737,11 +746,13 @@ public final class SecureAccountPayloadHandler {
                             syncSession(player, true, session.username(), session.accountNumber(), session.showUsername());
                             safeSyncAccountSummary(player, session.accountId());
                             safeSyncCards(player, session.accountId());
+                            safeSyncOperationHistory(player, session.accountId());
                         },
                         () -> {
                             syncSession(player, false, "", "", false);
                             PacketDistributor.sendToPlayer(player, new AtmAccountSummaryPayload(false, 0L, 0L, 0L, 0L, 0L));
                             PacketDistributor.sendToPlayer(player, new AtmCardsPayload(List.of()));
+                            PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(List.of()));
                         }
                 );
     }
@@ -750,6 +761,7 @@ public final class SecureAccountPayloadHandler {
         BankSession session = BankSessionService.INSTANCE.findActiveSession(player).orElse(null);
         if (session == null) {
             PacketDistributor.sendToPlayer(player, new AtmAccountSummaryPayload(false, 0L, 0L, 0L, 0L, 0L));
+            PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(List.of()));
             return;
         }
         syncAccountSummary(player, session.accountId());
@@ -769,6 +781,28 @@ public final class SecureAccountPayloadHandler {
                 summary.totalDebt(),
                 summary.globalCreditAvailable()
         ));
+    }
+
+    private static void syncOperationHistory(ServerPlayer player) throws SQLException {
+        BankSession session = BankSessionService.INSTANCE.findActiveSession(player).orElse(null);
+        if (session == null) {
+            PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(List.of()));
+            return;
+        }
+        syncOperationHistory(player, session.accountId());
+    }
+
+    private static void syncOperationHistory(ServerPlayer player, UUID accountId) throws SQLException {
+        PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(ACCOUNT_HISTORY_SERVICE.recentEntries(accountId)));
+    }
+
+    private static void safeSyncOperationHistory(ServerPlayer player, UUID accountId) {
+        try {
+            syncOperationHistory(player, accountId);
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao sincronizar historico da conta.", exception);
+            PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(List.of()));
+        }
     }
 
     private static void safeSyncAccountSummary(ServerPlayer player, java.util.UUID accountId) {

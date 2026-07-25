@@ -6,6 +6,7 @@ import br.com.economiamod.common.menu.AtmMenu.PlayerInventoryMode;
 import br.com.economiamod.common.card.CardType;
 import br.com.economiamod.common.network.AtmAccountSummaryPayload;
 import br.com.economiamod.common.network.AtmCardsPayload;
+import br.com.economiamod.common.network.AtmOperationHistoryPayload;
 import br.com.economiamod.common.network.SecureAccountAction;
 import br.com.economiamod.common.network.SecureAccountPayload;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -25,7 +26,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements AccountSummaryAwareScreen, AtmCardsAwareScreen {
+public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements AccountSummaryAwareScreen, AtmCardsAwareScreen, AtmOperationHistoryAwareScreen {
     private static final int GOLD_PRICE_REFRESH_TICKS = 200;
     private static final int BALANCE_REFRESH_TICKS = 40;
     private static final int CARD_LIST_VISIBLE_ROWS = 5;
@@ -47,6 +48,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
     private long creditDebt;
     private long creditAvailable;
     private List<AtmCardsPayload.CardSummary> atmCards = List.of();
+    private List<AtmOperationHistoryPayload.Entry> operationHistory = List.of();
     private int cardListOffset;
     private int selectedCardIndex = -1;
 
@@ -57,6 +59,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
     private Button cardsTab;
     private Button creditTab;
     private Button transferTab;
+    private Button historyTab;
     private Button securityTab;
     private Button goldInfoTab;
 
@@ -124,6 +127,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         requestSessionState();
         requestAccountSummary();
         requestCards();
+        requestOperationHistory();
     }
 
     public void applySessionState(boolean loggedIn, String username, String accountNumber, boolean showUsername) {
@@ -168,6 +172,11 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
             selectedCardIndex = cardListOffset;
         }
         updateCardListButtons();
+    }
+
+    @Override
+    public void applyOperationHistory(AtmOperationHistoryPayload payload) {
+        operationHistory = payload.entries();
     }
 
     @Override
@@ -236,6 +245,9 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         }
         if (view == AtmView.GOLD_INFO) {
             renderGoldInfo(graphics);
+        }
+        if (view == AtmView.HISTORY) {
+            renderOperationHistory(graphics);
         }
         if (!loggedIn && view == AtmView.LOGIN) {
             graphics.drawString(font, Component.translatable("screen.economia.atm.card_slot"), 282, 72, 0xB8C7C2, false);
@@ -336,11 +348,12 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         loginTab = addRenderableWidget(tabButton(leftPos + 14, topPos + 32, 80, "screen.economia.atm.login", AtmView.LOGIN));
         createTab = addRenderableWidget(tabButton(leftPos + 100, topPos + 32, 80, "screen.economia.atm.create_short", AtmView.CREATE));
         recoverTab = addRenderableWidget(tabButton(leftPos + 186, topPos + 32, 80, "screen.economia.atm.recover_short", AtmView.RECOVER));
-        cashTab = addRenderableWidget(tabButton(leftPos + 14, topPos + 32, 54, "screen.economia.atm.tab.cash", AtmView.CASH));
-        cardsTab = addRenderableWidget(tabButton(leftPos + 72, topPos + 32, 58, "screen.economia.atm.tab.cards", AtmView.CARDS));
-        creditTab = addRenderableWidget(tabButton(leftPos + 134, topPos + 32, 58, "screen.economia.atm.tab.credit", AtmView.CREDIT));
-        transferTab = addRenderableWidget(tabButton(leftPos + 196, topPos + 32, 68, "screen.economia.atm.tab.transfer", AtmView.TRANSFER));
-        securityTab = addRenderableWidget(tabButton(leftPos + 268, topPos + 32, 54, "screen.economia.atm.tab.security", AtmView.SECURITY));
+        cashTab = addRenderableWidget(tabButton(leftPos + 14, topPos + 32, 48, "screen.economia.atm.tab.cash", AtmView.CASH));
+        cardsTab = addRenderableWidget(tabButton(leftPos + 66, topPos + 32, 50, "screen.economia.atm.tab.cards", AtmView.CARDS));
+        creditTab = addRenderableWidget(tabButton(leftPos + 120, topPos + 32, 50, "screen.economia.atm.tab.credit", AtmView.CREDIT));
+        transferTab = addRenderableWidget(tabButton(leftPos + 174, topPos + 32, 62, "screen.economia.atm.tab.transfer", AtmView.TRANSFER));
+        historyTab = addRenderableWidget(tabButton(leftPos + 240, topPos + 32, 42, "screen.economia.atm.tab.history", AtmView.HISTORY));
+        securityTab = addRenderableWidget(tabButton(leftPos + 286, topPos + 32, 36, "screen.economia.atm.tab.security", AtmView.SECURITY));
         goldInfoTab = addRenderableWidget(tabButton(leftPos + 326, topPos + 32, 18, "screen.economia.atm.tab.gold", AtmView.GOLD_INFO));
     }
 
@@ -581,6 +594,10 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         PacketDistributor.sendToServer(new SecureAccountPayload(SecureAccountAction.GOLD_PRICE_REFRESH, "", "", ""));
     }
 
+    private void requestOperationHistory() {
+        PacketDistributor.sendToServer(new SecureAccountPayload(SecureAccountAction.OPERATION_HISTORY, "", "", ""));
+    }
+
     private void syncCardSlotMode() {
         CardSlotMode mode = switch (view) {
             case CREDIT -> CardSlotMode.CREDIT;
@@ -606,12 +623,15 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         if (view == AtmView.CARDS) {
             requestCards();
         }
+        if (view == AtmView.HISTORY) {
+            requestOperationHistory();
+        }
     }
 
     private void updateNavigation() {
         boolean authVisible = !loggedIn;
         setVisible(authVisible, loginTab, createTab, recoverTab);
-        setVisible(loggedIn, cashTab, cardsTab, creditTab, transferTab, securityTab, goldInfoTab);
+        setVisible(loggedIn, cashTab, cardsTab, creditTab, transferTab, historyTab, securityTab, goldInfoTab);
 
         loginTab.active = view != AtmView.LOGIN;
         createTab.active = view != AtmView.CREATE;
@@ -620,6 +640,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         cardsTab.active = view != AtmView.CARDS;
         creditTab.active = view != AtmView.CREDIT;
         transferTab.active = view != AtmView.TRANSFER;
+        historyTab.active = view != AtmView.HISTORY;
         securityTab.active = view != AtmView.SECURITY;
         goldInfoTab.active = view != AtmView.GOLD_INFO;
     }
@@ -682,6 +703,8 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
                 setVisible(true, cardCreditLimit, updateCreditButton, requestCreditButton, payInvoiceButton, issueInvoiceButton, payAllInvoicesButton);
             }
             case TRANSFER -> setVisible(true, transferAccountNumber, transferAmount, transferButton);
+            case HISTORY -> {
+            }
             case SECURITY -> setVisible(true, securityPassword, securityNewPassword, changePasswordButton, unblockCardButton, logoutButton);
             case GOLD_INFO -> {
             }
@@ -817,6 +840,27 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         graphics.drawString(font, Component.translatable("screen.economia.atm.gold_percent", menu.goldBuyPercent()), 252, y, 0xD7E8E1, false);
     }
 
+    private void renderOperationHistory(GuiGraphics graphics) {
+        graphics.drawString(font, Component.translatable("screen.economia.atm.history.date"), 16, 80, 0xB8C7C2, false);
+        graphics.drawString(font, Component.translatable("screen.economia.atm.history.operation"), 82, 80, 0xB8C7C2, false);
+        graphics.drawString(font, Component.translatable("screen.economia.atm.history.direction"), 190, 80, 0xB8C7C2, false);
+        drawRight(graphics, Component.translatable("screen.economia.atm.history.amount"), 332, 80, 0xB8C7C2);
+        if (operationHistory.isEmpty()) {
+            graphics.drawString(font, Component.translatable("screen.economia.atm.history.empty"), 16, 100, 0x8EA09A, false);
+            return;
+        }
+        int rows = Math.min(operationHistory.size(), 8);
+        for (int index = 0; index < rows; index++) {
+            AtmOperationHistoryPayload.Entry entry = operationHistory.get(index);
+            int y = 96 + index * 12;
+            int color = entry.directionKey().endsWith(".in") ? 0x80E6A8 : 0xE68E8E;
+            graphics.drawString(font, Component.literal(entry.occurredAt()), 16, y, 0xD7E8E1, false);
+            graphics.drawString(font, Component.translatable(entry.operationKey()), 82, y, 0xD7E8E1, false);
+            graphics.drawString(font, Component.translatable(entry.directionKey()), 190, y, color, false);
+            drawRight(graphics, Component.translatable("screen.economia.atm.gold_money", entry.amount()), 332, y, color);
+        }
+    }
+
     private boolean showsCardAndInventory() {
         return view == AtmView.LOGIN || view == AtmView.CARDS || view == AtmView.CREDIT || view == AtmView.SECURITY;
     }
@@ -898,7 +942,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
 
     private void setContentActive(boolean active) {
         for (AbstractWidget widget : List.of(
-                loginTab, createTab, recoverTab, cashTab, cardsTab, creditTab, transferTab, securityTab, goldInfoTab,
+                loginTab, createTab, recoverTab, cashTab, cardsTab, creditTab, transferTab, historyTab, securityTab, goldInfoTab,
                 username, password, newPassword, securityPassword, securityNewPassword, withdrawAmount, withdrawDenomination,
                 accountCreditLimit, cardCreditLimit, debitDailyLimit, transferAccountNumber, transferAmount,
                 passwordLoginButton, cardLoginButton, createAccountButton, recoverPasswordButton,
@@ -918,7 +962,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
 
     private void setContentVisible(boolean visible) {
         for (AbstractWidget widget : List.of(
-                loginTab, createTab, recoverTab, cashTab, cardsTab, creditTab, transferTab, securityTab, goldInfoTab,
+                loginTab, createTab, recoverTab, cashTab, cardsTab, creditTab, transferTab, historyTab, securityTab, goldInfoTab,
                 username, password, newPassword, securityPassword, securityNewPassword, withdrawAmount, withdrawDenomination,
                 accountCreditLimit, cardCreditLimit, debitDailyLimit, transferAccountNumber, transferAmount,
                 passwordLoginButton, cardLoginButton, createAccountButton, recoverPasswordButton,
@@ -1029,6 +1073,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         CARDS("screen.economia.atm.card_section", true),
         CREDIT("screen.economia.atm.credit_section", true),
         TRANSFER("screen.economia.atm.transfer_section", true),
+        HISTORY("screen.economia.atm.history_section", true),
         SECURITY("screen.economia.atm.security_section", true),
         GOLD_INFO("screen.economia.atm.gold_info_section", true);
 

@@ -58,6 +58,11 @@ public final class CommercialBlockLifecycleService {
         }
 
         if (!event.getState().is(ModBlocks.BANK_COUNTER.get())) {
+            if (event.getState().is(ModBlocks.MAIL.get()) && !canBreakMail(event)) {
+                event.setCanceled(true);
+                event.getPlayer().displayClientMessage(Component.translatable("block.economia.mail.break_denied"), true);
+                return;
+            }
             markRemoved(event);
             return;
         }
@@ -75,7 +80,8 @@ public final class CommercialBlockLifecycleService {
         return state.is(ModBlocks.ATM.get())
                 || state.is(ModBlocks.SELL_SHOP.get())
                 || state.is(ModBlocks.BUY_SHOP.get())
-                || state.is(ModBlocks.BANK_COUNTER.get());
+                || state.is(ModBlocks.BANK_COUNTER.get())
+                || state.is(ModBlocks.MAIL.get());
     }
 
     private void registerPlacedBlock(BlockEvent.EntityPlaceEvent event) {
@@ -94,7 +100,7 @@ public final class CommercialBlockLifecycleService {
             return;
         }
 
-        UUID ownerUuid = blockType == CommercialBlockType.SELL_SHOP || blockType == CommercialBlockType.BUY_SHOP
+        UUID ownerUuid = blockType == CommercialBlockType.SELL_SHOP || blockType == CommercialBlockType.BUY_SHOP || blockType == CommercialBlockType.MAIL
                 ? player.getUUID()
                 : null;
 
@@ -129,5 +135,29 @@ public final class CommercialBlockLifecycleService {
             EconomiaMod.LOGGER.warn("Falha ao marcar bloco comercial como removido no SQL.", exception);
             event.getPlayer().displayClientMessage(Component.translatable("block.economia.commercial.sql_unavailable"), true);
         }
+    }
+
+    private boolean canBreakMail(BlockEvent.BreakEvent event) {
+        if (event.getPlayer() instanceof ServerPlayer player && player.createCommandSourceStack().hasPermission(2)) {
+            return true;
+        }
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return false;
+        }
+        if (!(level.getBlockEntity(event.getPos()) instanceof CommercialBlockEntity blockEntity)) {
+            return false;
+        }
+        try {
+            return playerOwns(blockEntity.commercialBlockId(), event.getPlayer().getUUID());
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao verificar dono do Correio.", exception);
+            return false;
+        }
+    }
+
+    private boolean playerOwns(UUID commercialBlockId, UUID playerUuid) throws SQLException {
+        return new CommercialOwnerRepository().owner(commercialBlockId)
+                .map(playerUuid::equals)
+                .orElse(false);
     }
 }

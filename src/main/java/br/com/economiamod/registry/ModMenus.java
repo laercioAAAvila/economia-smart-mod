@@ -4,6 +4,7 @@ import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.menu.AtmMenu;
 import br.com.economiamod.common.menu.BankCounterMenu;
 import br.com.economiamod.common.menu.BuyShopMenu;
+import br.com.economiamod.common.menu.MailMenu;
 import br.com.economiamod.common.menu.SellShopMenu;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
@@ -23,6 +24,8 @@ public final class ModMenus {
             MENUS.register("sell_shop", () -> IMenuTypeExtension.create(SellShopMenu::new));
     public static final DeferredHolder<MenuType<?>, MenuType<BuyShopMenu>> BUY_SHOP =
             MENUS.register("buy_shop", () -> IMenuTypeExtension.create(BuyShopMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<MailMenu>> MAIL =
+            MENUS.register("mail", () -> IMenuTypeExtension.create(MailMenu::new));
 
     private ModMenus() {
     }

@@ -33,6 +33,7 @@ public final class ModCreativeTabs {
                 output.accept(ModBlocks.SELL_SHOP_ITEM.get());
                 output.accept(ModBlocks.BUY_SHOP_ITEM.get());
                 output.accept(ModBlocks.BANK_COUNTER_ITEM.get());
+                output.accept(ModBlocks.MAIL_ITEM.get());
             })
             .build());
 
@@ -50,6 +51,7 @@ public final class ModCreativeTabs {
             event.accept(ModBlocks.SELL_SHOP_ITEM.get());
             event.accept(ModBlocks.BUY_SHOP_ITEM.get());
             event.accept(ModBlocks.BANK_COUNTER_ITEM.get());
+            event.accept(ModBlocks.MAIL_ITEM.get());
         }
 
         if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {

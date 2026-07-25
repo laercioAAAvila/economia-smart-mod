@@ -22,7 +22,8 @@ public final class MigrationCatalog {
             migration(15, "align_account_number_sequence"),
             migration(16, "add_operation_recovery_index"),
             migration(17, "add_debit_daily_limits"),
-            migration(18, "add_card_creation_numbers")
+            migration(18, "add_card_creation_numbers"),
+            migration(19, "add_mail_blocks")
     );
 
     private MigrationCatalog() {

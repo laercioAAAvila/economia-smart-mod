@@ -18,7 +18,8 @@ public final class ModBlockEntities {
                     ModBlocks.ATM.get(),
                     ModBlocks.SELL_SHOP.get(),
                     ModBlocks.BUY_SHOP.get(),
-                    ModBlocks.BANK_COUNTER.get()
+                    ModBlocks.BANK_COUNTER.get(),
+                    ModBlocks.MAIL.get()
             ).build(null));
 
     private ModBlockEntities() {
@@ -28,4 +29,3 @@ public final class ModBlockEntities {
         BLOCK_ENTITY_TYPES.register(eventBus);
     }
 }
-
