@@ -17,7 +17,7 @@ public final class ModBlocks {
     private static final DeferredRegister.Blocks BLOCKS = DeferredRegister.createBlocks(EconomiaMod.MOD_ID);
     private static final DeferredRegister.Items BLOCK_ITEMS = DeferredRegister.createItems(EconomiaMod.MOD_ID);
 
-    public static final DeferredBlock<Block> ATM = registerCommercialBlock("atm", metalBlock(3.5F));
+    public static final DeferredBlock<Block> ATM = registerCommercialBlock("atm", metalBlock(2.5F));
     public static final DeferredBlock<Block> SELL_SHOP = registerCommercialBlock("sell_shop", woodBlock(2.5F));
     public static final DeferredBlock<Block> BUY_SHOP = registerCommercialBlock("buy_shop", woodBlock(2.5F));
     public static final DeferredBlock<Block> BANK_COUNTER = registerCommercialBlock("bank_counter", metalBlock(4.0F));

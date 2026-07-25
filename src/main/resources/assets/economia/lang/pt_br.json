@@ -356,7 +356,8 @@
   "commands.economia.admin.database.reset.success": "Banco da economia resetado. Migrações recriadas: %s.",
   "commands.economia.admin.database.reset.failed": "Falha ao resetar o banco da economia.",
   "block.economia.commercial.sql_unavailable": "O sistema bancário está indisponível. O bloco comercial não foi alterado.",
+  "block.economia.commercial.break_denied": "Somente quem colocou ou quem está no modo criativo pode remover este bloco comercial.",
   "block.economia.bank_counter.place_denied": "Somente operador ou administrador pode colocar a Bancada do Banco.",
-  "block.economia.bank_counter.break_denied": "Somente operador ou administrador pode remover a Bancada do Banco.",
-  "block.economia.mail.break_denied": "Somente o dono ou administrador pode remover o Correio."
+  "block.economia.bank_counter.break_denied": "Somente quem está no modo criativo pode remover a Bancada do Banco.",
+  "block.economia.mail.break_denied": "Somente quem colocou ou quem está no modo criativo pode remover o Correio."
 }

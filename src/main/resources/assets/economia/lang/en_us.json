@@ -356,7 +356,8 @@
   "commands.economia.admin.database.reset.success": "Economy database reset. Migrations recreated: %s.",
   "commands.economia.admin.database.reset.failed": "Failed to reset the economy database.",
   "block.economia.commercial.sql_unavailable": "The banking system is unavailable. The commercial block was not changed.",
+  "block.economia.commercial.break_denied": "Only the player who placed it or a creative-mode player can remove this commercial block.",
   "block.economia.bank_counter.place_denied": "Only an operator or administrator can place the Bank Counter.",
-  "block.economia.bank_counter.break_denied": "Only an operator or administrator can remove the Bank Counter.",
-  "block.economia.mail.break_denied": "Only the owner or administrator can remove the Mail."
+  "block.economia.bank_counter.break_denied": "Only a creative-mode player can remove the Bank Counter.",
+  "block.economia.mail.break_denied": "Only the player who placed it or a creative-mode player can remove the Mail."
 }

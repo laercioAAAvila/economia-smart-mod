@@ -16,6 +16,7 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 public final class CommercialBlockLifecycleService {
     private final CommercialBlockResolver blockResolver = new CommercialBlockResolver();
     private final CommercialBlockSqlService sqlService = new CommercialBlockSqlService();
+    private final CommercialBlockDropService dropService = new CommercialBlockDropService();
 
     public void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (!isCommercialBlock(event.getPlacedBlock())) {
@@ -57,23 +58,61 @@ public final class CommercialBlockLifecycleService {
             return;
         }
 
-        if (!event.getState().is(ModBlocks.BANK_COUNTER.get())) {
-            if (event.getState().is(ModBlocks.MAIL.get()) && !canBreakMail(event)) {
-                event.setCanceled(true);
-                event.getPlayer().displayClientMessage(Component.translatable("block.economia.mail.break_denied"), true);
-                return;
-            }
-            markRemoved(event);
+        if (!canBreakCommercialBlock(event)) {
+            event.setCanceled(true);
+            event.getPlayer().displayClientMessage(breakDeniedMessage(event.getState()), true);
             return;
         }
 
-        if (event.getPlayer() instanceof ServerPlayer player && player.createCommandSourceStack().hasPermission(2)) {
-            markRemoved(event);
-            return;
+        markRemoved(event);
+    }
+
+    private Component breakDeniedMessage(BlockState state) {
+        if (state.is(ModBlocks.BANK_COUNTER.get())) {
+            return Component.translatable("block.economia.bank_counter.break_denied");
+        }
+        return Component.translatable("block.economia.commercial.break_denied");
+    }
+
+    private boolean canBreakCommercialBlock(BlockEvent.BreakEvent event) {
+        if (event.getPlayer().isCreative()) {
+            return true;
         }
 
-        event.setCanceled(true);
-        event.getPlayer().displayClientMessage(Component.translatable("block.economia.bank_counter.break_denied"), true);
+        if (event.getState().is(ModBlocks.BANK_COUNTER.get())) {
+            return false;
+        }
+
+        CommercialBlockType blockType = blockResolver.typeOf(event.getState()).orElse(null);
+        if (blockType == null) {
+            return false;
+        }
+
+        if (blockType == CommercialBlockType.ATM
+                || blockType == CommercialBlockType.SELL_SHOP
+                || blockType == CommercialBlockType.BUY_SHOP
+                || blockType == CommercialBlockType.MAIL) {
+            return playerPlaced(event);
+        }
+
+        return false;
+    }
+
+    private boolean playerPlaced(BlockEvent.BreakEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return false;
+        }
+        if (!(level.getBlockEntity(event.getPos()) instanceof CommercialBlockEntity blockEntity)) {
+            return false;
+        }
+        try {
+            return new CommercialOwnerRepository().placedBy(blockEntity.commercialBlockId())
+                    .map(event.getPlayer().getUUID()::equals)
+                    .orElse(false);
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao verificar colocador do bloco comercial.", exception);
+            return false;
+        }
     }
 
     public boolean isCommercialBlock(BlockState state) {
@@ -100,7 +139,10 @@ public final class CommercialBlockLifecycleService {
             return;
         }
 
-        UUID ownerUuid = blockType == CommercialBlockType.SELL_SHOP || blockType == CommercialBlockType.BUY_SHOP || blockType == CommercialBlockType.MAIL
+        UUID ownerUuid = blockType == CommercialBlockType.ATM
+                || blockType == CommercialBlockType.SELL_SHOP
+                || blockType == CommercialBlockType.BUY_SHOP
+                || blockType == CommercialBlockType.MAIL
                 ? player.getUUID()
                 : null;
 
@@ -129,35 +171,12 @@ public final class CommercialBlockLifecycleService {
         }
 
         try {
+            dropService.dropStoredItems(level, event.getPos(), blockEntity.commercialBlockId());
             sqlService.markRemoved(blockEntity.commercialBlockId());
         } catch (SQLException exception) {
             event.setCanceled(true);
             EconomiaMod.LOGGER.warn("Falha ao marcar bloco comercial como removido no SQL.", exception);
             event.getPlayer().displayClientMessage(Component.translatable("block.economia.commercial.sql_unavailable"), true);
         }
-    }
-
-    private boolean canBreakMail(BlockEvent.BreakEvent event) {
-        if (event.getPlayer() instanceof ServerPlayer player && player.createCommandSourceStack().hasPermission(2)) {
-            return true;
-        }
-        if (!(event.getLevel() instanceof ServerLevel level)) {
-            return false;
-        }
-        if (!(level.getBlockEntity(event.getPos()) instanceof CommercialBlockEntity blockEntity)) {
-            return false;
-        }
-        try {
-            return playerOwns(blockEntity.commercialBlockId(), event.getPlayer().getUUID());
-        } catch (SQLException exception) {
-            EconomiaMod.LOGGER.warn("Falha ao verificar dono do Correio.", exception);
-            return false;
-        }
-    }
-
-    private boolean playerOwns(UUID commercialBlockId, UUID playerUuid) throws SQLException {
-        return new CommercialOwnerRepository().owner(commercialBlockId)
-                .map(playerUuid::equals)
-                .orElse(false);
     }
 }

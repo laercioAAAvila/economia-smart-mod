@@ -16,7 +16,7 @@
 ## Bloco e permissoes
 
 - [x] Tornar o jogador que colocou o bloco dono do Correio.
-- [x] Permitir quebra somente para dono ou administrador.
+- [x] Permitir quebra somente para quem colocou ou jogador em modo criativo.
 - [x] Abrir a tela de nome somente para o dono enquanto o Correio estiver sem nome.
 
 ## Interface
@@ -111,3 +111,20 @@
 - [x] Remover o card escuro interno do pagamento.
 - [x] Usar o card padrao da tela do Correio como fundo do pagamento.
 - [x] Realinhar texto, slot de cartao, slots de notas e botoes no card padrao.
+
+## Permissao e drop de blocos comerciais
+
+- [x] Bloquear quebra da Bancada do Banco para nao administradores.
+- [x] Permitir quebra de Loja de Compra, Loja de Venda, Caixa Eletronico e Correio apenas para quem colocou ou modo criativo.
+- [x] Usar o jogador que colocou como dono do Caixa Eletronico.
+- [x] Manter fallback para blocos antigos usando quem colocou o bloco.
+- [x] Adicionar drop do proprio item para Loja de Compra, Loja de Venda, Caixa Eletronico, Bancada do Banco e Correio.
+
+## Ajuste final de quebra e drops
+
+- [x] Permitir quebrar a Bancada do Banco somente em modo criativo.
+- [x] Permitir quebrar Loja de Compra, Loja de Venda, Correio e Caixa Eletronico somente para quem colocou ou em modo criativo.
+- [x] Dropar itens persistidos dos inventarios comerciais antes de remover o bloco.
+- [x] Limpar slots persistidos apos preparar os drops para evitar duplicacao.
+- [x] Manter drop do proprio bloco por loot table.
+- [x] Ajustar tempo de quebra do Caixa Eletronico para ficar igual ao das lojas.

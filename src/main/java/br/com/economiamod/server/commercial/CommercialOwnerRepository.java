@@ -10,7 +10,7 @@ import java.util.UUID;
 
 public final class CommercialOwnerRepository {
     public Optional<UUID> owner(UUID commercialBlockId) throws SQLException {
-        String sql = "SELECT owner_player_uuid FROM economy_commercial_blocks WHERE id = ? AND status = 'ACTIVE'";
+        String sql = "SELECT COALESCE(owner_player_uuid, placed_by_player_uuid) AS owner_uuid FROM economy_commercial_blocks WHERE id = ? AND status = 'ACTIVE'";
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, commercialBlockId);
@@ -18,7 +18,21 @@ public final class CommercialOwnerRepository {
                 if (!resultSet.next()) {
                     return Optional.empty();
                 }
-                return Optional.ofNullable(resultSet.getObject("owner_player_uuid", UUID.class));
+                return Optional.ofNullable(resultSet.getObject("owner_uuid", UUID.class));
+            }
+        }
+    }
+
+    public Optional<UUID> placedBy(UUID commercialBlockId) throws SQLException {
+        String sql = "SELECT placed_by_player_uuid FROM economy_commercial_blocks WHERE id = ? AND status = 'ACTIVE'";
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, commercialBlockId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(resultSet.getObject("placed_by_player_uuid", UUID.class));
             }
         }
     }
