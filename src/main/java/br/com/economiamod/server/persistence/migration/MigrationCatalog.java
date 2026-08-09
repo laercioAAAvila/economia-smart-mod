@@ -25,7 +25,10 @@ public final class MigrationCatalog {
             migration(18, "add_card_creation_numbers"),
             migration(19, "add_mail_blocks"),
             migration(20, "create_groups_claims_and_locations"),
-            migration(21, "add_claim_territories_invoices_and_anchors")
+            migration(21, "add_claim_territories_invoices_and_anchors"),
+            migration(22, "add_claim_payments_and_upgrades"),
+            migration(23, "add_minecraft_player_name"),
+            migration(24, "scope_player_accounts_by_server")
     );
 
     private MigrationCatalog() {

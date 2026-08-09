@@ -185,10 +185,17 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         graphics.fill(leftPos + 6, topPos + 6, leftPos + imageWidth - 6, topPos + 28, 0xFF225E54);
         int contentBottom = usesHotbarOnly() ? 220 : 164;
         graphics.fill(leftPos + 10, topPos + 56, leftPos + imageWidth - 10, topPos + contentBottom, 0xFF20262A);
-        if (showsCardAndInventory()) {
+        if (showsMenuInventory()) {
+            if (view == AtmView.CREATE) {
+                for (int slot = 0; slot < 6; slot++) {
+                    drawSlotFrame(graphics, 190 + (slot % 3) * 18, 96 + (slot / 3) * 18);
+                }
+            }
+            if (showsCardAndInventory()) {
             drawSlotFrame(graphics, 290, 84);
             if (view == AtmView.CREDIT) {
                 drawSlotFrame(graphics, 244, 118);
+            }
             }
             drawInventoryFrames(graphics, inventoryModeForView());
         }
@@ -242,6 +249,12 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         }
         if (view == AtmView.CREATE || view == AtmView.RECOVER) {
             graphics.drawString(font, Component.translatable("screen.economia.atm.password_rule"), 20, 148, 0x8EA09A, false);
+        }
+        if (view == AtmView.CREATE) {
+            graphics.drawString(font, Component.translatable(
+                    "screen.economia.atm.account_opening_fee", menu.accountOpeningFee()), 190, 78, 0xD7E8E1, false);
+            graphics.drawString(font, Component.translatable("screen.economia.atm.account_opening_cash"),
+                    190, 88, 0xB8C7C2, false);
         }
         if (view == AtmView.GOLD_INFO) {
             renderGoldInfo(graphics);
@@ -306,7 +319,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
 
     @Override
     protected void renderSlot(GuiGraphics graphics, Slot slot) {
-        if (!passwordModalOpen() && showsCardAndInventory() && slot.isActive()) {
+        if (!passwordModalOpen() && showsMenuInventory() && slot.isActive()) {
             super.renderSlot(graphics, slot);
         }
     }
@@ -316,7 +329,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         if (passwordModalOpen()) {
             return;
         }
-        if (showsCardAndInventory() && (slot == null || slot.isActive())) {
+        if (showsMenuInventory() && (slot == null || slot.isActive())) {
             super.slotClicked(slot, slotId, mouseButton, type);
         }
     }
@@ -614,6 +627,10 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         }
 
         view = nextView;
+        boolean opening = view == AtmView.CREATE;
+        menu.setAccountOpeningVisible(opening);
+        PacketDistributor.sendToServer(new SecureAccountPayload(
+                SecureAccountAction.SET_ACCOUNT_OPENING_MODE, Boolean.toString(opening), "", ""));
         syncCardSlotMode();
         updateNavigation();
         updateContent();
@@ -647,6 +664,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
 
     private void updateContent() {
         menu.setSlotsVisible(showsCardAndInventory());
+        username.setHint(Component.translatable("screen.economia.atm.username"));
         setVisible(false,
                 username,
                 password,
@@ -693,7 +711,9 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         switch (view) {
             case LOGIN -> setVisible(true, username, password, passwordLoginButton, cardLoginButton);
             case CREATE -> setVisible(true, username, password, createAccountButton);
-            case RECOVER -> setVisible(true, username, newPassword, recoverPasswordButton);
+            case RECOVER -> {
+                setVisible(true, username, newPassword, recoverPasswordButton);
+            }
             case CASH -> setVisible(true, withdrawAmount, withdrawDenomination, withdrawButton, depositButton);
             case CARDS -> {
                 setVisible(true, debitCardButton, creditCardButton, comboCardButton, debitDailyLimit, updateDebitDailyLimitButton, cardListUpButton, cardListDownButton, blockListedCardButton, disableListedCardButton);
@@ -865,11 +885,18 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         return view == AtmView.LOGIN || view == AtmView.CARDS || view == AtmView.CREDIT || view == AtmView.SECURITY;
     }
 
+    private boolean showsMenuInventory() {
+        return view == AtmView.CREATE || showsCardAndInventory();
+    }
+
     private boolean usesHotbarOnly() {
         return view == AtmView.CARDS || view == AtmView.CREDIT;
     }
 
     private PlayerInventoryMode inventoryModeForView() {
+        if (view == AtmView.CREATE) {
+            return PlayerInventoryMode.FULL;
+        }
         if (!showsCardAndInventory()) {
             return PlayerInventoryMode.NONE;
         }

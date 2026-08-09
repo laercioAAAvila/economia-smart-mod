@@ -38,6 +38,9 @@ public final class EconomyServerConfig {
     public static final ModConfigSpec.BooleanValue BANK_GOLD_ALLOW_PHYSICAL_NOTES;
     public static final ModConfigSpec.BooleanValue BANK_GOLD_ALLOW_CREDIT_PURCHASE;
     public static final ModConfigSpec.LongValue BANK_CARD_ISSUE_FEE;
+    public static final ModConfigSpec.ConfigValue<String> BANK_SERVER_UUID;
+    public static final ModConfigSpec.IntValue BANK_MAX_ACCOUNTS_PER_PLAYER;
+    public static final ModConfigSpec.LongValue BANK_ACCOUNT_OPENING_FEE;
     public static final ModConfigSpec.LongValue MAIL_PRICE_PER_OCCUPIED_SLOT;
 
     public static final ModConfigSpec.BooleanValue DYNAMIC_PRICING_ENABLED;
@@ -49,10 +52,11 @@ public final class EconomyServerConfig {
 
     public static final ModConfigSpec.IntValue CLAN_MEMBER_LIMIT;
     public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_MEMBER_LIMIT;
-    public static final ModConfigSpec.IntValue CLAN_INITIAL_CLAIM_LIMIT;
-    public static final ModConfigSpec.IntValue CLAN_MAX_CLAIM_LIMIT;
-    public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_INITIAL_CLAIM_LIMIT;
-    public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_MAX_CLAIM_LIMIT;
+    public static final ModConfigSpec.IntValue CLAIM_MIN_CHUNKS;
+    public static final ModConfigSpec.IntValue CLAIM_MAX_CHUNKS;
+    public static final ModConfigSpec.LongValue CLAIM_UPGRADE_BASE_PRICE;
+    public static final ModConfigSpec.IntValue CLAIM_UPGRADE_MIN_PERCENTAGE;
+    public static final ModConfigSpec.IntValue CLAIM_UPGRADE_MAX_PERCENTAGE;
     public static final ModConfigSpec.IntValue CLAIM_EXTERNAL_DISTANCE;
     public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_CLAIM_DISTANCE;
     public static final ModConfigSpec.IntValue CLAN_LEADERSHIP_INACTIVITY_DAYS;
@@ -120,6 +124,11 @@ public final class EconomyServerConfig {
         BUILDER.pop();
 
         BUILDER.push("bank");
+        BUILDER.push("accounts");
+        BANK_SERVER_UUID = BUILDER.define("serverUuid", "");
+        BANK_MAX_ACCOUNTS_PER_PLAYER = BUILDER.defineInRange("maxAccountsPerPlayer", 3, 1, Integer.MAX_VALUE);
+        BANK_ACCOUNT_OPENING_FEE = BUILDER.defineInRange("openingFee", 1_000L, 0L, (long) Integer.MAX_VALUE);
+        BUILDER.pop();
         BUILDER.push("gold");
         BANK_GOLD_ENABLED = BUILDER.define("enabled", true);
         BANK_GOLD_NUGGET_VALUE = BUILDER.defineInRange("nuggetValue", 1L, 1L, Long.MAX_VALUE);
@@ -153,18 +162,19 @@ public final class EconomyServerConfig {
         GROUP_NAME_MIN_LENGTH = BUILDER.defineInRange("nameMinLength", 3, 1, 64);
         GROUP_NAME_MAX_LENGTH = BUILDER.defineInRange("nameMaxLength", 32, 1, 64);
         LOCATION_NAME_MAX_LENGTH = BUILDER.defineInRange("locationNameMaxLength", 64, 1, 64);
+        CLAIM_MIN_CHUNKS = BUILDER.defineInRange("claimMinChunks", 4, 1, 100000);
+        CLAIM_MAX_CHUNKS = BUILDER.defineInRange("claimMaxChunks", 20, 1, 100000);
+        CLAIM_UPGRADE_BASE_PRICE = BUILDER.defineInRange("claimUpgradeBasePrice", 10_000L, 1L, Long.MAX_VALUE);
+        CLAIM_UPGRADE_MIN_PERCENTAGE = BUILDER.defineInRange("claimUpgradeMinPercentage", 10, 0, 10000);
+        CLAIM_UPGRADE_MAX_PERCENTAGE = BUILDER.defineInRange("claimUpgradeMaxPercentage", 30, 0, 10000);
         BUILDER.push("clan");
         CLAN_MEMBER_LIMIT = BUILDER.defineInRange("memberLimit", 20, 1, 1000);
-        CLAN_INITIAL_CLAIM_LIMIT = BUILDER.defineInRange("initialClaimLimit", 4, 1, 100000);
-        CLAN_MAX_CLAIM_LIMIT = BUILDER.defineInRange("maxClaimLimit", 16, 1, 100000);
         CLAN_MAX_TERRITORIES = BUILDER.defineInRange("maxTerritories", 3, 1, Integer.MAX_VALUE);
         CLAN_LEADERSHIP_INACTIVITY_DAYS = BUILDER.defineInRange("leadershipInactivityDays", 20, 1, 3650);
         CLAN_LEADERSHIP_CANDIDATE_ACTIVE_DAYS = BUILDER.defineInRange("leadershipCandidateActiveDays", 3, 1, 3650);
         BUILDER.pop();
         BUILDER.push("privateProperty");
         PRIVATE_PROPERTY_MEMBER_LIMIT = BUILDER.defineInRange("memberLimit", 5, 1, 1000);
-        PRIVATE_PROPERTY_INITIAL_CLAIM_LIMIT = BUILDER.defineInRange("initialClaimLimit", 1, 1, 100000);
-        PRIVATE_PROPERTY_MAX_CLAIM_LIMIT = BUILDER.defineInRange("maxClaimLimit", 8, 1, 100000);
         PRIVATE_PROPERTY_MAX_TERRITORIES = BUILDER.defineInRange("maxTerritories", 3, 1, Integer.MAX_VALUE);
         PRIVATE_PROPERTY_CLAIM_DISTANCE = BUILDER.defineInRange("separateTerritoryDistance", 1, 0, 1000);
         BUILDER.pop();

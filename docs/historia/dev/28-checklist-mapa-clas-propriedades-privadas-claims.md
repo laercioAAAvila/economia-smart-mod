@@ -1,5 +1,7 @@
 # Checklist — Mapa, clãs, propriedades privadas, claims e permissões
 
+> Upgrade progressivo, pagamento direto de `Dar Claim`, slots, autenticação visual e texturas passam a ser acompanhados em `CHK-DEV-32`.
+
 ## História e arquitetura
 
 - [x] Registrar a história técnica consolidada.
@@ -33,6 +35,7 @@
 - [x] Validar sobreposição, distância externa, limite e adjacência ortogonal.
 - [x] Aplicar a distância configurável entre territórios separados da mesma propriedade privada.
 - [x] Impedir remoção direta do chunk da âncora.
+- [x] Direcionar novas expansões ao fluxo pago `Comprar chunk` do Bloco de Claim.
 - [x] Recalcular componentes e remover territórios sem âncora.
 - [x] Proteger colocação, quebra e interação em território reclamado.
 - [x] Bloquear explosões e movimentos por pistão em território protegido.

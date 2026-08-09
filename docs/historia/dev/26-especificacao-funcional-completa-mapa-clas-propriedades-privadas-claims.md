@@ -1,6 +1,6 @@
 # Especificação Funcional Completa
 
-> Atualização vigente: Propriedade Privada não possui líder. O jogador que confirma o claim é o proprietário do lote, e os membros são convidados por propriedade. As regras de confirmação, cobrança, âncora e venda estão consolidadas na história `HIST-DEV-29`.
+> Atualizações vigentes: Propriedade Privada não possui líder. O jogador que confirma o claim é o proprietário do lote, e os membros são convidados por propriedade. As regras de confirmação, cobrança, âncora e venda estão consolidadas na história `HIST-DEV-29`. O upgrade progressivo, o pagamento de `Dar Claim` e os ajustes visuais são definidos por `HIST-DEV-31`, que prevalece em caso de divergência.
 
 ## Mapa, Clãs, Propriedades Privadas, Claims, Permissões, Blocos Protegidos, Chat e Sistema Bancário
 
@@ -371,7 +371,8 @@ Não serão necessários comandos.
 
 O canal Clã somente aparecerá para membros de Clã.
 
-Propriedade Privada somente para membros de Propriedade Privada.
+Propriedade Privada somente para proprietários ou membros convidados de ao menos um
+território privado.
 
 ---
 
@@ -388,7 +389,7 @@ mas poderá possuir simultaneamente:
 ```text
 1 Clã
 +
-1 Propriedade Privada
+Propriedades Privadas até o limite configurado de territórios
 ```
 
 ---
@@ -691,10 +692,10 @@ Nome:
 
 # 30. Propriedade Privada
 
-Cada jogador poderá fazer parte de:
+Cada jogador poderá possuir:
 
 ```text
-1 Propriedade Privada
+até o limite configurado de territórios privados
 ```
 
 Limite padrão:
@@ -709,14 +710,14 @@ Configuração:
 privatePropertyMemberLimit = 5
 ```
 
-A Propriedade Privada terá:
+A Propriedade Privada terá, por território:
 
 ```text
-Líder
-Membros
+Proprietário
+Membros convidados
 ```
 
-Não terá Vice-líder.
+Não terá Líder nem Vice-líder.
 
 ---
 
@@ -724,7 +725,7 @@ Não terá Vice-líder.
 
 Propriedade Privada não é removida automaticamente por inatividade.
 
-O Líder poderá desfazê-la manualmente.
+O proprietário poderá remover ou vender o território conforme as regras vigentes.
 
 ---
 
@@ -866,17 +867,22 @@ Quebre o Bloco de Claim para remover esta âncora.
 
 # 39. Expansão pelo mapa
 
-Depois da ativação:
+Depois da ativação, a expansão parte do Bloco de Claim do território:
 
 ```text
-Clique em chunk livre
-→ adicionar Claim
+Comprar chunk
+→ abrir mapa de seleção
+→ mostrar o preço do chunk apontado
+→ clicar em chunk livre adjacente
+→ adicionar Claim e emitir boleto
 
-Clique novamente
+No mapa comum, clique em chunk próprio
 → remover Claim
 ```
 
 Exceto o chunk da âncora.
+
+A adição gratuita pelo mapa comum não é permitida.
 
 ---
 
@@ -950,20 +956,20 @@ X, Z - 1
 Inicial:
 
 ```text
-1
+4
 ```
 
 Máximo padrão:
 
 ```text
-8
+20
 ```
 
 Configuração:
 
 ```text
-privatePropertyInitialClaimLimit = 1
-privatePropertyMaxClaimLimit = 8
+claimMinChunks = 4
+claimMaxChunks = 20
 ```
 
 ---
@@ -985,8 +991,8 @@ Máximo:
 Configuração:
 
 ```text
-clanInitialClaimLimit = 4
-clanMaxClaimLimit = 16
+claimMinChunks = 4
+claimMaxChunks = 20
 ```
 
 ---
@@ -1917,7 +1923,9 @@ $ 15.000
 [Voltar]
 ```
 
-Custos ainda deverão ser definidos na configuração ou implementação econômica.
+O preço é progressivo e recalculado a partir de `claimUpgradeBasePrice`,
+`claimUpgradeMinPercentage` e `claimUpgradeMaxPercentage`. A fórmula, o pagamento e o
+estado de limite máximo seguem `HIST-DEV-31`.
 
 ---
 
@@ -1950,9 +1958,8 @@ permissões de visitante
 ```text
 id
 nome
-líder
-membros
-último acesso
+proprietário por território
+membros convidados por território
 claims
 blocos de claim
 limite
@@ -1985,11 +1992,11 @@ clanMemberLimit = 20
 
 privatePropertyMemberLimit = 5
 
-clanInitialClaimLimit = 4
-clanMaxClaimLimit = 16
-
-privatePropertyInitialClaimLimit = 1
-privatePropertyMaxClaimLimit = 8
+claimMinChunks = 4
+claimMaxChunks = 20
+claimUpgradeBasePrice = 10000
+claimUpgradeMinPercentage = 10
+claimUpgradeMaxPercentage = 30
 
 claimExternalDistance = 3
 
@@ -2290,16 +2297,14 @@ A auditoria completa ainda deixa alguns parâmetros de negócio que poderão ser
 
 1. Receita do Bloco de Claim do Clã.
 2. Receita do Bloco de Claim da Propriedade Privada.
-3. Preço de cada upgrade.
-4. Fonte do dinheiro utilizado para comprar upgrade.
-5. Destino exato do saldo quando um Clã é desfeito.
-6. Destino exato do saldo quando uma Propriedade Privada é desfeita.
-7. Se o Fundo de Apoio terá limite de retirada por membro.
-8. Distância entre dois territórios separados do mesmo Clã.
-9. Limites de tamanho dos nomes de Clã e Propriedade Privada.
-10. Prazo de validade dos convites.
-11. Quantidade máxima de localizações pessoais.
-12. Se localizações serão salvas apenas no servidor ou poderão existir localmente no cliente.
+3. Destino exato do saldo quando um Clã é desfeito.
+4. Destino exato do saldo quando uma Propriedade Privada é desfeita.
+5. Se o Fundo de Apoio terá limite de retirada por membro.
+6. Distância entre dois territórios separados do mesmo Clã.
+7. Limites de tamanho dos nomes de Clã e Propriedade Privada.
+8. Prazo de validade dos convites.
+9. Quantidade máxima de localizações pessoais.
+10. Se localizações serão salvas apenas no servidor ou poderão existir localmente no cliente.
 
 Esses pontos não impedem a implementação da arquitetura principal, mas não deverão ser inventados silenciosamente pelo Codex.
 

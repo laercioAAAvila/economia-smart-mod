@@ -1,9 +1,11 @@
 package br.com.economiamod.server.account;
 
+import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.account.AccountNameNormalizer;
 import br.com.economiamod.common.account.AccountStatus;
 import br.com.economiamod.common.account.AccountType;
 import br.com.economiamod.common.credit.CreditLimitPolicy;
+import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import br.com.economiamod.server.security.PasswordHash;
 import br.com.economiamod.server.security.PasswordService;
@@ -20,33 +22,76 @@ public final class AccountService {
         this.passwordService = passwordService;
     }
 
-    public CreateAccountResult createPlayerAccount(UUID playerUuid, String username, char[] password) throws SQLException {
+    public CreateAccountResult createPlayerAccount(UUID playerUuid, String playerName,
+                                                   String username, char[] password,
+                                                   UUID requestId) throws SQLException {
         String normalizedUsername = AccountNameNormalizer.normalize(username);
         PasswordHash passwordHash = passwordService.hash(password);
+        UUID serverUuid = BankServerIdentityService.INSTANCE.current();
 
         try (Connection connection = EconomyDatabase.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                if (playerHasAccount(connection, playerUuid)) {
+                lockPlayerAccountScope(connection, serverUuid, playerUuid);
+                PendingAccount existing = pendingAccount(connection, serverUuid, playerUuid,
+                        normalizedUsername, requestId);
+                if (existing != null) {
+                    if (!existing.active()) {
+                        updatePendingPassword(connection, existing.accountId(), playerName, passwordHash, requestId);
+                    }
+                    connection.commit();
+                    return CreateAccountResult.created(existing.accountId(), existing.openingFee(), existing.active());
+                }
+                if (playerAccountCount(connection, serverUuid, playerUuid)
+                        >= EconomyServerConfig.BANK_MAX_ACCOUNTS_PER_PLAYER.get()) {
                     connection.rollback();
                     return CreateAccountResult.playerAlreadyHasAccount();
                 }
 
-                if (usernameExists(connection, normalizedUsername)) {
+                if (usernameExists(connection, serverUuid, normalizedUsername)) {
                     connection.rollback();
                     return CreateAccountResult.usernameAlreadyUsed();
                 }
 
-                insertPlayerAccount(connection, playerUuid, username.trim(), normalizedUsername, nextAccountNumber(connection), passwordHash);
+                UUID accountId = UUID.randomUUID();
+                long openingFee = EconomyServerConfig.BANK_ACCOUNT_OPENING_FEE.get();
+                insertPlayerAccount(connection, accountId, serverUuid, playerUuid, playerName,
+                        username.trim(), normalizedUsername, nextAccountNumber(connection), passwordHash,
+                        openingFee, requestId);
                 connection.commit();
-                return CreateAccountResult.created();
+                return CreateAccountResult.created(accountId, openingFee, false);
             } catch (SQLException | RuntimeException exception) {
                 connection.rollback();
                 throw exception;
             } finally {
                 connection.setAutoCommit(previousAutoCommit);
             }
+        }
+    }
+
+    public void activatePendingAccount(UUID accountId) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE economy_accounts
+                        SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP, version = version + 1
+                      WHERE id = ? AND server_uuid = ? AND account_type = 'PLAYER' AND status = 'PENDING'
+                     """)) {
+            statement.setObject(1, accountId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.executeUpdate();
+        }
+    }
+
+    public void deletePendingAccount(UUID accountId) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     DELETE FROM economy_accounts
+                      WHERE id = ? AND server_uuid = ? AND account_type = 'PLAYER' AND status = 'PENDING'
+                     """)) {
+            statement.setObject(1, accountId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.executeUpdate();
         }
     }
 
@@ -62,20 +107,23 @@ public final class AccountService {
                        status
                   FROM economy_accounts
                  WHERE account_type = 'PLAYER'
+                   AND server_uuid = ?
                    AND username_normalized = ?
                 """;
 
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, normalizedUsername);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setString(2, normalizedUsername);
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return AuthenticateAccountResult.notFound();
                 }
 
+                UUID accountId = resultSet.getObject("id", UUID.class);
                 if (!AccountStatus.ACTIVE.name().equals(resultSet.getString("status"))) {
-                    return AuthenticateAccountResult.inactiveAccount();
+                    return AuthenticateAccountResult.inactiveAccount(accountId);
                 }
 
                 PasswordHash storedHash = new PasswordHash(
@@ -85,10 +133,9 @@ public final class AccountService {
                 );
 
                 if (!passwordService.verify(password, storedHash)) {
-                    return AuthenticateAccountResult.invalidPassword();
+                    return AuthenticateAccountResult.invalidPassword(accountId);
                 }
 
-                UUID accountId = resultSet.getObject("id", UUID.class);
                 updateLastLogin(connection, accountId);
                 return AuthenticateAccountResult.authenticated(accountId, resultSet.getString("username"), resultSet.getString("account_number"));
             }
@@ -147,7 +194,8 @@ public final class AccountService {
         }
     }
 
-    public ChangePasswordResult recoverPassword(UUID playerUuid, String username, char[] newPassword) throws SQLException {
+    public ChangePasswordResult recoverPassword(UUID playerUuid, String playerName,
+                                                String username, char[] newPassword) throws SQLException {
         String normalizedUsername = AccountNameNormalizer.normalize(username);
         PasswordHash newPasswordHash = passwordService.hash(newPassword);
         String sql = """
@@ -155,8 +203,9 @@ public final class AccountService {
                        status
                   FROM economy_accounts
                  WHERE player_uuid = ?
-                   AND username_normalized = ?
+                   AND server_uuid = ?
                    AND account_type = 'PLAYER'
+                   AND username_normalized = ?
                 """;
 
         try (Connection connection = EconomyDatabase.getConnection()) {
@@ -164,19 +213,29 @@ public final class AccountService {
             connection.setAutoCommit(false);
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setObject(1, playerUuid);
-                statement.setString(2, normalizedUsername);
+                statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+                statement.setString(3, normalizedUsername);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     if (!resultSet.next()) {
+                        UUID existingAccountId = firstPlayerAccountId(connection, playerUuid);
+                        if (existingAccountId != null) {
+                            EconomiaMod.LOGGER.warn("Recuperação de senha recusada: usuário bancário não corresponde; accountUuid={}.", existingAccountId);
+                            connection.rollback();
+                            return ChangePasswordResult.usernameMismatch();
+                        }
+                        EconomiaMod.LOGGER.warn("Recuperação de senha recusada: nenhuma conta vinculada à identidade Minecraft atual neste servidor.");
                         connection.rollback();
                         return ChangePasswordResult.notFound();
                     }
 
+                    UUID accountId = resultSet.getObject("id", UUID.class);
                     if (!AccountStatus.ACTIVE.name().equals(resultSet.getString("status"))) {
+                        EconomiaMod.LOGGER.warn("Recuperação de senha recusada: conta inativa; accountUuid={}.", accountId);
                         connection.rollback();
                         return ChangePasswordResult.inactiveAccount();
                     }
 
-                    updatePassword(connection, resultSet.getObject("id", UUID.class), newPasswordHash);
+                    updatePasswordAndPlayerName(connection, accountId, playerName, newPasswordHash);
                     connection.commit();
                     return ChangePasswordResult.changed();
                 }
@@ -185,6 +244,22 @@ public final class AccountService {
                 throw exception;
             } finally {
                 connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
+
+    private UUID firstPlayerAccountId(Connection connection, UUID playerUuid) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT id FROM economy_accounts
+                 WHERE account_type = 'PLAYER' AND server_uuid = ? AND player_uuid = ?
+                   AND status <> 'CLOSED'
+                 ORDER BY created_at, id
+                 LIMIT 1
+                """)) {
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, playerUuid);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? resultSet.getObject("id", UUID.class) : null;
             }
         }
     }
@@ -349,6 +424,28 @@ public final class AccountService {
         }
     }
 
+    private void updatePasswordAndPlayerName(Connection connection, UUID accountId, String playerName,
+                                             PasswordHash passwordHash) throws SQLException {
+        String sql = """
+                UPDATE economy_accounts
+                   SET minecraft_player_name = ?,
+                       password_hash = ?,
+                       password_salt = ?,
+                       password_algorithm = ?,
+                       updated_at = CURRENT_TIMESTAMP,
+                       version = version + 1
+                 WHERE id = ?
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, playerName);
+            statement.setString(2, passwordHash.hashBase64());
+            statement.setString(3, passwordHash.saltBase64());
+            statement.setString(4, passwordHash.algorithm());
+            statement.setObject(5, accountId);
+            statement.executeUpdate();
+        }
+    }
+
     private AccountCreditState lockCreditState(Connection connection, UUID accountId) throws SQLException {
         String sql = """
                 SELECT status,
@@ -431,20 +528,29 @@ public final class AccountService {
         }
     }
 
-    private boolean playerHasAccount(Connection connection, UUID playerUuid) throws SQLException {
-        String sql = "SELECT 1 FROM economy_accounts WHERE account_type = 'PLAYER' AND player_uuid = ?";
+    private int playerAccountCount(Connection connection, UUID serverUuid, UUID playerUuid) throws SQLException {
+        String sql = """
+                SELECT COUNT(*) FROM economy_accounts
+                 WHERE account_type = 'PLAYER' AND server_uuid = ? AND player_uuid = ? AND status <> 'CLOSED'
+                """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, playerUuid);
+            statement.setObject(1, serverUuid);
+            statement.setObject(2, playerUuid);
             try (ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next();
+                resultSet.next();
+                return resultSet.getInt(1);
             }
         }
     }
 
-    private boolean usernameExists(Connection connection, String normalizedUsername) throws SQLException {
-        String sql = "SELECT 1 FROM economy_accounts WHERE account_type = 'PLAYER' AND username_normalized = ?";
+    private boolean usernameExists(Connection connection, UUID serverUuid, String normalizedUsername) throws SQLException {
+        String sql = """
+                SELECT 1 FROM economy_accounts
+                 WHERE account_type = 'PLAYER' AND server_uuid = ? AND username_normalized = ? AND status <> 'CLOSED'
+                """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, normalizedUsername);
+            statement.setObject(1, serverUuid);
+            statement.setString(2, normalizedUsername);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -478,16 +584,23 @@ public final class AccountService {
 
     private void insertPlayerAccount(
             Connection connection,
+            UUID accountId,
+            UUID serverUuid,
             UUID playerUuid,
+            String playerName,
             String username,
             String normalizedUsername,
             String accountNumber,
-            PasswordHash passwordHash
+            PasswordHash passwordHash,
+            long openingFee,
+            UUID requestId
     ) throws SQLException {
         String sql = """
                 INSERT INTO economy_accounts(
                     id,
+                    server_uuid,
                     player_uuid,
+                    minecraft_player_name,
                     account_number,
                     username,
                     username_normalized,
@@ -496,6 +609,8 @@ public final class AccountService {
                     password_algorithm,
                     account_type,
                     status,
+                    opening_fee,
+                    opening_request_id,
                     balance,
                     configured_credit_limit,
                     credit_principal_outstanding,
@@ -505,22 +620,78 @@ public final class AccountService {
                     last_login_at,
                     version
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, 1)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, 1)
                 """;
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, UUID.randomUUID());
-            statement.setObject(2, playerUuid);
-            statement.setString(3, accountNumber);
-            statement.setString(4, username);
-            statement.setString(5, normalizedUsername);
-            statement.setString(6, passwordHash.hashBase64());
-            statement.setString(7, passwordHash.saltBase64());
-            statement.setString(8, passwordHash.algorithm());
-            statement.setString(9, AccountType.PLAYER.name());
-            statement.setString(10, AccountStatus.ACTIVE.name());
+            statement.setObject(1, accountId);
+            statement.setObject(2, serverUuid);
+            statement.setObject(3, playerUuid);
+            statement.setString(4, playerName);
+            statement.setString(5, accountNumber);
+            statement.setString(6, username);
+            statement.setString(7, normalizedUsername);
+            statement.setString(8, passwordHash.hashBase64());
+            statement.setString(9, passwordHash.saltBase64());
+            statement.setString(10, passwordHash.algorithm());
+            statement.setString(11, AccountType.PLAYER.name());
+            statement.setString(12, "PENDING");
+            statement.setLong(13, openingFee);
+            statement.setObject(14, requestId);
             statement.executeUpdate();
         }
+    }
+
+    private void lockPlayerAccountScope(Connection connection, UUID serverUuid, UUID playerUuid) throws SQLException {
+        long lockKey = serverUuid.getMostSignificantBits() ^ serverUuid.getLeastSignificantBits()
+                ^ playerUuid.getMostSignificantBits() ^ playerUuid.getLeastSignificantBits();
+        try (PreparedStatement statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {
+            statement.setLong(1, lockKey);
+            statement.executeQuery().close();
+        }
+    }
+
+    private PendingAccount pendingAccount(Connection connection, UUID serverUuid, UUID playerUuid,
+                                          String normalizedUsername, UUID requestId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT id, opening_fee, status
+                  FROM economy_accounts
+                 WHERE account_type = 'PLAYER' AND server_uuid = ? AND player_uuid = ?
+                   AND (opening_request_id = ? OR (username_normalized = ? AND status = 'PENDING'))
+                 ORDER BY CASE WHEN opening_request_id = ? THEN 0 ELSE 1 END
+                 LIMIT 1 FOR UPDATE
+                """)) {
+            statement.setObject(1, serverUuid);
+            statement.setObject(2, playerUuid);
+            statement.setObject(3, requestId);
+            statement.setString(4, normalizedUsername);
+            statement.setObject(5, requestId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? new PendingAccount(resultSet.getObject("id", UUID.class),
+                        resultSet.getLong("opening_fee"), "ACTIVE".equals(resultSet.getString("status"))) : null;
+            }
+        }
+    }
+
+    private void updatePendingPassword(Connection connection, UUID accountId, String playerName,
+                                       PasswordHash passwordHash, UUID requestId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE economy_accounts
+                   SET minecraft_player_name = ?, password_hash = ?, password_salt = ?, password_algorithm = ?,
+                       opening_request_id = ?, updated_at = CURRENT_TIMESTAMP, version = version + 1
+                 WHERE id = ? AND status = 'PENDING'
+                """)) {
+            statement.setString(1, playerName);
+            statement.setString(2, passwordHash.hashBase64());
+            statement.setString(3, passwordHash.saltBase64());
+            statement.setString(4, passwordHash.algorithm());
+            statement.setObject(5, requestId);
+            statement.setObject(6, accountId);
+            statement.executeUpdate();
+        }
+    }
+
+    private record PendingAccount(UUID accountId, long openingFee, boolean active) {
     }
 
     private record AccountCreditState(

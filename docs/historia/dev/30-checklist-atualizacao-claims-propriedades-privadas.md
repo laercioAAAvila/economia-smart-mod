@@ -1,5 +1,7 @@
 # Checklist — Atualização de claims e propriedades privadas
 
+> O novo pagamento inicial de `Dar Claim` e o upgrade de chunks passam a ser acompanhados em `CHK-DEV-32`; os itens concluídos abaixo registram o fluxo anterior.
+
 ## História e configuração
 
 - [x] Registrar a atualização funcional consolidada.

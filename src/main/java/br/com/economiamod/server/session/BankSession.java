@@ -10,6 +10,7 @@ public record BankSession(
         String accountNumber,
         boolean showUsername,
         UUID loginCardId,
+        int failedPasswordAttempts,
         Instant createdAt,
         Instant expiresAt
 ) {

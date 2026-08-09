@@ -22,10 +22,11 @@ resultado. O SQL permanece como fonte oficial dos dados persistentes.
 ```text
 clanMemberLimit = 20
 privatePropertyMemberLimit = 5
-clanInitialClaimLimit = 4
-clanMaxClaimLimit = 16
-privatePropertyInitialClaimLimit = 1
-privatePropertyMaxClaimLimit = 8
+claimMinChunks = 4
+claimMaxChunks = 20
+claimUpgradeBasePrice = 10000
+claimUpgradeMinPercentage = 10
+claimUpgradeMaxPercentage = 30
 claimExternalDistance = 3
 privatePropertyClaimDistance = 1
 clanMaxTerritories = 3
@@ -34,8 +35,8 @@ clanLeadershipInactivityDays = 20
 clanLeadershipCandidateActiveDays = 3
 ```
 
-Custos de upgrade, receitas dos blocos de claim, destinos de saldo ao encerrar um
-grupo, validade de convites, limites de nomes/localizações e distância entre
+Receitas dos blocos de claim, destinos de saldo ao encerrar um grupo, validade de
+convites, limites de nomes/localizações e distância entre
 territórios do mesmo clã ficam isolados para configuração posterior.
 
 ## Clãs
@@ -65,6 +66,8 @@ territórios do mesmo clã ficam isolados para configuração posterior.
 - Clã: líder ou vice coloca a âncora; somente o líder ativa, expande, reduz ou quebra.
 - Propriedade Privada: qualquer jogador coloca a âncora pendente; quem confirma torna-se proprietário e passa a controlar o território.
 - O chunk da âncora conta no limite e não pode ser removido diretamente pelo mapa.
+- A expansão é iniciada pelo botão `Comprar chunk` da âncora, usa seleção no mapa e gera boleto pelo preço do chunk escolhido.
+- O mapa comum remove chunks permitidos, mas não adiciona chunks gratuitamente.
 - Expansão aceita apenas vizinhos ortogonais.
 - Remover chunk ou âncora recalcula componentes e elimina partes sem âncora.
 - O limite pertence ao grupo inteiro, somando todos os territórios.
@@ -142,6 +145,8 @@ T | T | T                 T | T | T
 - Voltar preserva a sessão e retorna um nível da navegação.
 - Sair ou `ESC` devolve cartão, encerra a sessão e fecha a interface.
 - A autenticação dos blocos de gerenciamento usa cartão antes de liberar ações.
+- Depois da autenticação, o slot e o item do cartão ficam ocultos e inativos; o servidor mantém o item protegido até devolvê-lo no fechamento.
+- Todo slot interativo possui desenho individual compatível com o inventário do Minecraft.
 - Menus exibem somente ações compatíveis com o cargo, mas o servidor sempre revalida.
 
 ## Persistência
@@ -172,7 +177,16 @@ ledger/transações existentes. IDs existentes não são alterados.
 
 - Colocar o bloco cria uma âncora pendente; o claim nasce somente após `Dar Claim`.
 - O preço é calculado pela dimensão e distância ao centro com valores do config do mod.
-- A confirmação cria um território persistente e um boleto de terreno vinculado a ele.
+- `Dar Claim` abre pagamento por cartão ou dinheiro; somente a aprovação idempotente cria o território ativo.
+- Cartão exige escolha explícita entre crédito e débito; dinheiro usa somente os slots do menu e não dá troco.
 - O pagamento do boleto da âncora estende `anchor_paid_until_millis`; somente períodos vigentes forçam o chunk.
 - A venda é concluída no pagamento idempotente do boleto e altera grupo/proprietário de todos os chunks do território.
 - Dívida do terreno e validade paga da âncora pertencem ao território e não são apagadas na venda.
+
+## Upgrade do limite de chunks
+
+- Clã e Propriedade Privada começam em `claimMinChunks` e podem alcançar `claimMaxChunks`.
+- Cada compra aumenta o limite total do grupo em um chunk.
+- Percentual e preço seguem a progressão configurável de `HIST-DEV-31`.
+- O servidor recalcula o próximo nível no pagamento e concede o upgrade uma única vez.
+- No limite máximo, a interface informa o estado e desabilita a compra.

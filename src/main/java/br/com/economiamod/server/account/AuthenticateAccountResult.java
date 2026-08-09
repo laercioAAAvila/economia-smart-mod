@@ -11,11 +11,11 @@ public record AuthenticateAccountResult(AuthenticateAccountResultType type, UUID
         return new AuthenticateAccountResult(AuthenticateAccountResultType.NOT_FOUND, null, null, "");
     }
 
-    public static AuthenticateAccountResult invalidPassword() {
-        return new AuthenticateAccountResult(AuthenticateAccountResultType.INVALID_PASSWORD, null, null, "");
+    public static AuthenticateAccountResult invalidPassword(UUID accountId) {
+        return new AuthenticateAccountResult(AuthenticateAccountResultType.INVALID_PASSWORD, accountId, null, "");
     }
 
-    public static AuthenticateAccountResult inactiveAccount() {
-        return new AuthenticateAccountResult(AuthenticateAccountResultType.INACTIVE_ACCOUNT, null, null, "");
+    public static AuthenticateAccountResult inactiveAccount(UUID accountId) {
+        return new AuthenticateAccountResult(AuthenticateAccountResultType.INACTIVE_ACCOUNT, accountId, null, "");
     }
 }

@@ -1,1 +1,1 @@
-{ "parent": "minecraft:block/cube_all", "textures": { "all": "minecraft:block/copper_block" } }
+{ "parent": "minecraft:block/cube_all", "textures": { "all": "economia:block/private_property_management_block" } }

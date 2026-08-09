@@ -4,5 +4,6 @@ public enum ChangePasswordResultType {
     CHANGED,
     INVALID_PASSWORD,
     INACTIVE_ACCOUNT,
+    USERNAME_MISMATCH,
     NOT_FOUND
 }

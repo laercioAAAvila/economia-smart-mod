@@ -39,7 +39,7 @@ public final class AccountDeletionService {
                 connection.commit();
 
                 if (target.playerUuid() != null) {
-                    BankSessionService.INSTANCE.logout(target.playerUuid());
+                    BankSessionService.INSTANCE.logout(target.playerUuid(), target.accountId());
                 }
                 return AccountDeletionResult.deleted(target, affectedRows);
             } catch (SQLException | RuntimeException exception) {
@@ -57,14 +57,16 @@ public final class AccountDeletionService {
                        player_uuid,
                        username,
                        account_number
-                  FROM economy_accounts
+                 FROM economy_accounts
                  WHERE account_type = 'PLAYER'
+                   AND server_uuid = ?
                    AND username_normalized = ?
                  FOR UPDATE
                 """;
 
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, normalizedUsername);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setString(2, normalizedUsername);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return null;
@@ -82,7 +84,6 @@ public final class AccountDeletionService {
     private int purgeAccountData(Connection connection, AccountDeletionTarget target) throws SQLException {
         int affectedRows = 0;
         affectedRows += detachCommercialBlocks(connection, target.accountId());
-        affectedRows += deleteOperations(connection, target.playerUuid());
         affectedRows += deletePreviousAuditLogs(connection, target);
         affectedRows += deleteGoldExchangeEntries(connection, target);
         affectedRows += deleteCardEntries(connection, target.accountId());
@@ -115,16 +116,6 @@ public final class AccountDeletionService {
         }
     }
 
-    private int deleteOperations(Connection connection, UUID playerUuid) throws SQLException {
-        if (playerUuid == null) {
-            return 0;
-        }
-        try (PreparedStatement statement = connection.prepareStatement("DELETE FROM economy_operations WHERE player_uuid = ?")) {
-            statement.setObject(1, playerUuid);
-            return statement.executeUpdate();
-        }
-    }
-
     private int deletePreviousAuditLogs(Connection connection, AccountDeletionTarget target) throws SQLException {
         String sql = """
                 DELETE FROM economy_audit_logs
@@ -133,40 +124,12 @@ public final class AccountDeletionService {
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, target.accountId());
-            int affectedRows = statement.executeUpdate();
-            if (target.playerUuid() == null) {
-                return affectedRows;
-            }
-            try (PreparedStatement playerStatement = connection.prepareStatement("DELETE FROM economy_audit_logs WHERE actor_player_uuid = ?")) {
-                playerStatement.setObject(1, target.playerUuid());
-                return affectedRows + playerStatement.executeUpdate();
-            }
+            return statement.executeUpdate();
         }
     }
 
     private int deleteGoldExchangeEntries(Connection connection, AccountDeletionTarget target) throws SQLException {
-        if (target.playerUuid() == null) {
-            return deleteGoldExchangeEntriesByAccountTransactions(connection, target.accountId());
-        }
-
-        String sql = """
-                DELETE FROM economy_gold_exchange_entries
-                 WHERE player_uuid = ?
-                    OR transaction_id IN (
-                        SELECT id
-                          FROM economy_transactions
-                         WHERE source_account_id = ?
-                            OR destination_account_id = ?
-                            OR card_id IN (SELECT id FROM economy_cards WHERE account_id = ?)
-                    )
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, target.playerUuid());
-            statement.setObject(2, target.accountId());
-            statement.setObject(3, target.accountId());
-            statement.setObject(4, target.accountId());
-            return statement.executeUpdate();
-        }
+        return deleteGoldExchangeEntriesByAccountTransactions(connection, target.accountId());
     }
 
     private int deleteGoldExchangeEntriesByAccountTransactions(Connection connection, UUID accountId) throws SQLException {

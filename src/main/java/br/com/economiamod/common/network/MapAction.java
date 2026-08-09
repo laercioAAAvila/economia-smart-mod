@@ -5,7 +5,8 @@ public enum MapAction {
     SAVE_LOCATION,
     UPDATE_LOCATION,
     DELETE_LOCATION,
-    TOGGLE_CLAIM;
+    TOGGLE_CLAIM,
+    PURCHASE_CLAIM;
 
     public static MapAction byId(int id) {
         MapAction[] values = values();

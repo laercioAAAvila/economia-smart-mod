@@ -192,9 +192,12 @@ public final class ClaimInvoiceService {
     private void applyPayment(Connection connection, ClaimInvoiceRecord invoice, UUID payerUuid) throws SQLException {
         if ("LAND".equals(invoice.invoiceType())) {
             try (PreparedStatement statement = connection.prepareStatement("""
-                    UPDATE economy_claim_territories SET land_debt = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+                    UPDATE economy_claim_territories
+                       SET land_debt = GREATEST(0, land_debt - ?), updated_at = CURRENT_TIMESTAMP
+                     WHERE id = ?
                     """)) {
-                statement.setObject(1, invoice.territoryId());
+                statement.setLong(1, invoice.amount());
+                statement.setObject(2, invoice.territoryId());
                 statement.executeUpdate();
             }
             return;

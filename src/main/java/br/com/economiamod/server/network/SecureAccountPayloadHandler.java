@@ -14,6 +14,8 @@ import br.com.economiamod.common.network.SecureAccountPayload;
 import br.com.economiamod.server.account.AccountCreditLimitResultType;
 import br.com.economiamod.server.account.AccountBalanceSummary;
 import br.com.economiamod.server.account.AccountIdentity;
+import br.com.economiamod.server.account.AccountOpeningResult;
+import br.com.economiamod.server.account.AccountOpeningService;
 import br.com.economiamod.server.account.AccountOperationHistoryService;
 import br.com.economiamod.server.account.AccountPasswordVerificationResultType;
 import br.com.economiamod.server.account.AccountQueryService;
@@ -72,6 +74,7 @@ public final class SecureAccountPayloadHandler {
     private static final int MAX_PASSWORD_LENGTH = 12;
     private static final long CREDIT_REQUEST_COOLDOWN_MILLIS = 10_000L;
     private static final AccountService ACCOUNT_SERVICE = new AccountService(new PasswordService());
+    private static final AccountOpeningService ACCOUNT_OPENING_SERVICE = new AccountOpeningService();
     private static final AccountQueryService ACCOUNT_QUERY_SERVICE = new AccountQueryService();
     private static final CardValidationService CARD_VALIDATION_SERVICE = new CardValidationService(new CardItemDataService());
     private static final CardCreditLimitService CARD_CREDIT_LIMIT_SERVICE = new CardCreditLimitService();
@@ -135,6 +138,7 @@ public final class SecureAccountPayloadHandler {
                 case DISABLE_CARD_BY_ID -> disableCardById(serverPlayer, payload);
                 case DEPOSIT -> deposit(serverPlayer, payload);
                 case OPERATION_HISTORY -> syncOperationHistory(serverPlayer);
+                case SET_ACCOUNT_OPENING_MODE -> setAccountOpeningMode(serverPlayer, payload);
             }
         } catch (SQLException | RuntimeException exception) {
             EconomiaMod.LOGGER.warn("Falha ao processar acao segura de conta bancaria.", exception);
@@ -154,12 +158,19 @@ public final class SecureAccountPayloadHandler {
             switch (result.type()) {
                 case AUTHENTICATED -> {
                     BankSessionService.INSTANCE.startSession(player, result.accountId(), result.username(), result.accountNumber(), true);
-                    player.sendSystemMessage(Component.translatable("commands.economia.account.login.success", result.username()));
+                    player.sendSystemMessage(Component.translatable("commands.economia.account.login.success"));
                     syncSession(player, true, result.username(), result.accountNumber(), true);
                     syncAccountSummary(player, result.accountId());
                 }
                 case INACTIVE_ACCOUNT -> player.sendSystemMessage(Component.translatable("commands.economia.account.login.inactive"));
-                case NOT_FOUND, INVALID_PASSWORD -> player.sendSystemMessage(Component.translatable("commands.economia.account.login.invalid"));
+                case NOT_FOUND -> {
+                    EconomiaMod.LOGGER.warn("Login bancário recusado: usuário inexistente; identificadores omitidos.");
+                    player.sendSystemMessage(Component.translatable("commands.economia.account.login.invalid"));
+                }
+                case INVALID_PASSWORD -> {
+                    EconomiaMod.LOGGER.warn("Login bancário recusado: senha inválida; accountUuid={}.", result.accountId());
+                    player.sendSystemMessage(Component.translatable("commands.economia.account.login.invalid"));
+                }
             }
         } finally {
             Arrays.fill(password, '\0');
@@ -178,9 +189,13 @@ public final class SecureAccountPayloadHandler {
             return;
         }
 
-        AccountIdentity identity = ACCOUNT_QUERY_SERVICE.findActiveIdentity(card.accountId()).orElse(new AccountIdentity("", ""));
+        AccountIdentity identity = ACCOUNT_QUERY_SERVICE.findActiveIdentity(card.accountId()).orElse(null);
+        if (identity == null) {
+            player.sendSystemMessage(Component.translatable("commands.economia.atm.card_login.invalid"));
+            return;
+        }
         BankSessionService.INSTANCE.startSession(player, card.accountId(), identity.username(), identity.accountNumber(), false, card.cardId());
-        player.sendSystemMessage(Component.translatable("commands.economia.account.login.success_card", identity.accountNumber()));
+        player.sendSystemMessage(Component.translatable("commands.economia.account.login.success_card"));
         syncSession(player, true, identity.username(), identity.accountNumber(), false);
         syncAccountSummary(player, card.accountId());
     }
@@ -197,17 +212,28 @@ public final class SecureAccountPayloadHandler {
 
         char[] password = payload.password().toCharArray();
         try {
-            CreateAccountResult result = ACCOUNT_SERVICE.createPlayerAccount(player.getUUID(), payload.username(), password);
-            switch (result.type()) {
-                case CREATED -> {
+            if (!(player.containerMenu instanceof AtmMenu atmMenu) || !atmMenu.accountOpeningVisible()) {
+                player.sendSystemMessage(Component.translatable("commands.economia.atm.account_opening.open_atm"));
+                return;
+            }
+            AccountOpeningResult result = ACCOUNT_OPENING_SERVICE.open(
+                    player, payload.username(), password, atmMenu.openingCash(), payload.requestId());
+            if (result.success()) {
+                    atmMenu.setAccountOpeningVisible(player, false);
                     player.sendSystemMessage(Component.translatable("commands.economia.account.create.success"));
                     login(player, payload);
-                }
-                case PLAYER_ALREADY_HAS_ACCOUNT -> player.sendSystemMessage(Component.translatable("commands.economia.account.create.player_exists"));
-                case USERNAME_ALREADY_USED -> player.sendSystemMessage(Component.translatable("commands.economia.account.create.username_exists"));
+            } else {
+                player.sendSystemMessage(Component.translatable(
+                        "commands.economia.atm.account_opening." + result.code()));
             }
         } finally {
             Arrays.fill(password, '\0');
+        }
+    }
+
+    private static void setAccountOpeningMode(ServerPlayer player, SecureAccountPayload payload) {
+        if (player.containerMenu instanceof AtmMenu atmMenu) {
+            atmMenu.setAccountOpeningVisible(player, Boolean.parseBoolean(payload.username()));
         }
     }
 
@@ -238,6 +264,7 @@ public final class SecureAccountPayloadHandler {
                     player.sendSystemMessage(Component.translatable("commands.economia.account.password.changed"));
                 }
                 case INACTIVE_ACCOUNT -> player.sendSystemMessage(Component.translatable("commands.economia.account.login.inactive"));
+                case USERNAME_MISMATCH -> player.sendSystemMessage(Component.translatable("commands.economia.account.password.invalid"));
                 case NOT_FOUND -> {
                     BankSessionService.INSTANCE.logout(player);
                     player.sendSystemMessage(Component.translatable("commands.economia.session.invalid"));
@@ -251,23 +278,46 @@ public final class SecureAccountPayloadHandler {
     }
 
     private static void recoverPassword(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
-        if (payload.username() == null || payload.username().trim().isEmpty() || !validPassword(payload.newPassword())) {
+        if (payload.username() == null || payload.username().isBlank()) {
+            player.sendSystemMessage(Component.translatable("commands.economia.account.invalid_input"));
+            return;
+        }
+        if (!validPassword(payload.newPassword())) {
             player.sendSystemMessage(Component.translatable("commands.economia.account.password.length"));
             return;
         }
 
         char[] newPassword = payload.newPassword().toCharArray();
         try {
-            ChangePasswordResult result = ACCOUNT_SERVICE.recoverPassword(player.getUUID(), payload.username(), newPassword);
+            ChangePasswordResult result = ACCOUNT_SERVICE.recoverPassword(
+                    player.getUUID(), player.getGameProfile().getName(), payload.username(), newPassword);
             switch (result.type()) {
-                case CHANGED -> player.sendSystemMessage(Component.translatable("commands.economia.account.password.recovered"));
+                case CHANGED -> loginAfterRecovery(player, payload.username(), newPassword);
                 case INACTIVE_ACCOUNT -> player.sendSystemMessage(Component.translatable("commands.economia.account.login.inactive"));
+                case USERNAME_MISMATCH -> player.sendSystemMessage(Component.translatable(
+                        "commands.economia.account.recover.username_mismatch"));
                 case NOT_FOUND -> player.sendSystemMessage(Component.translatable("commands.economia.account.recover.not_found"));
                 case INVALID_PASSWORD -> player.sendSystemMessage(Component.translatable("commands.economia.account.password.invalid"));
             }
         } finally {
             Arrays.fill(newPassword, '\0');
         }
+    }
+
+    private static void loginAfterRecovery(ServerPlayer player, String username, char[] newPassword)
+            throws SQLException {
+        AuthenticateAccountResult authentication = ACCOUNT_SERVICE.authenticate(username, newPassword);
+        if (authentication.type() != br.com.economiamod.server.account.AuthenticateAccountResultType.AUTHENTICATED) {
+            EconomiaMod.LOGGER.error("Inconsistência após recuperação de senha: autenticação imediata falhou; accountUuid={}.",
+                    authentication.accountId());
+            player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+            return;
+        }
+        BankSessionService.INSTANCE.startSession(player, authentication.accountId(), authentication.username(),
+                authentication.accountNumber(), true);
+        player.sendSystemMessage(Component.translatable("commands.economia.account.password.recovered"));
+        syncSession(player, true, authentication.username(), authentication.accountNumber(), true);
+        syncAccountSummary(player, authentication.accountId());
     }
 
     private static void updateCardCredit(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
@@ -729,6 +779,7 @@ public final class SecureAccountPayloadHandler {
         try {
             AccountPasswordVerificationResultType result = ACCOUNT_SERVICE.verifyPassword(session.accountId(), password);
             if (result == AccountPasswordVerificationResultType.VALID) {
+                BankSessionService.INSTANCE.resetInvalidPasswords(player);
                 return true;
             }
             if (result == AccountPasswordVerificationResultType.INVALID_PASSWORD) {
@@ -743,8 +794,15 @@ public final class SecureAccountPayloadHandler {
     }
 
     private static void handleInvalidSensitivePassword(ServerPlayer player, BankSession session) throws SQLException {
-        player.sendSystemMessage(Component.translatable("commands.economia.account.password.invalid"));
         if (session.showUsername()) {
+            player.sendSystemMessage(Component.translatable("commands.economia.account.password.invalid"));
+            return;
+        }
+        int attempts = BankSessionService.INSTANCE.recordInvalidPassword(player);
+        int remaining = Math.max(0, 3 - attempts);
+        if (remaining > 0) {
+            player.sendSystemMessage(Component.translatable(
+                    "commands.economia.account.password.invalid_attempts_remaining", remaining));
             return;
         }
         if (session.loginCardId() != null) {

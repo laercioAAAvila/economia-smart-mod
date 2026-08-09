@@ -95,13 +95,6 @@ public final class GroupService {
                 String name = "Propriedade " + playerUuid.toString().substring(0, 8);
                 UUID accountId = createAccount(connection, AccountType.PRIVATE_PROPERTY, name);
                 insertGroup(connection, groupId, GroupType.PRIVATE_PROPERTY, name, playerUuid, accountId, null);
-                try (PreparedStatement statement = connection.prepareStatement(
-                        "UPDATE economy_groups SET claim_limit = ? WHERE id = ?")) {
-                    statement.setInt(1, Math.max(EconomyServerConfig.PRIVATE_PROPERTY_INITIAL_CLAIM_LIMIT.get(),
-                            EconomyServerConfig.PRIVATE_PROPERTY_MAX_TERRITORIES.get()));
-                    statement.setObject(2, groupId);
-                    statement.executeUpdate();
-                }
                 insertMember(connection, groupId, GroupType.PRIVATE_PROPERTY, playerUuid, GroupRole.OWNER,
                         defaultMask(GroupType.PRIVATE_PROPERTY), activeMillis);
                 connection.commit();
@@ -444,7 +437,7 @@ public final class GroupService {
             statement.setObject(5, leaderUuid);
             statement.setObject(6, accountId);
             statement.setObject(7, supportAccountId);
-            statement.setInt(8, type == GroupType.CLAN ? EconomyServerConfig.CLAN_INITIAL_CLAIM_LIMIT.get() : EconomyServerConfig.PRIVATE_PROPERTY_INITIAL_CLAIM_LIMIT.get());
+            statement.setInt(8, EconomyServerConfig.CLAIM_MIN_CHUNKS.get());
             statement.executeUpdate();
         }
     }

@@ -17,6 +17,7 @@ import net.minecraft.server.level.ServerPlayer;
 
 public final class GroupManagementStateService {
     private final GroupRepository repository = new GroupRepository();
+    private final ClaimUpgradePricingService upgrades = new ClaimUpgradePricingService();
 
     public GroupStatePayload state(ServerPlayer player, GroupType type, boolean authenticated) throws SQLException {
         List<GroupStatePayload.InviteSummary> invites = new ArrayList<>();
@@ -28,20 +29,25 @@ public final class GroupManagementStateService {
         GroupMembership membership = authenticated ? repository.membership(player.getUUID(), type).orElse(null) : null;
         if (membership == null) {
             return new GroupStatePayload(authenticated, type, false, null, "", GroupRole.MEMBER,
-                    0L, 0L, 0, false, false, List.of(), invites);
+                    0L, 0L, 0, 0, 0, 0L, true, true,
+                    false, false, List.of(), invites);
         }
         GroupSummary group = repository.group(membership.groupId()).orElse(null);
         if (group == null) {
             return new GroupStatePayload(authenticated, type, false, null, "", GroupRole.MEMBER,
-                    0L, 0L, 0, false, false, List.of(), invites);
+                    0L, 0L, 0, 0, 0, 0L, true, true,
+                    false, false, List.of(), invites);
         }
         List<GroupStatePayload.MemberSummary> members = new ArrayList<>();
         for (GroupMemberView member : repository.members(group.id())) {
             members.add(new GroupStatePayload.MemberSummary(member.playerUuid(), displayName(player, member.playerUuid()),
                     member.role(), member.permissionMask(), member.lastActiveMillis()));
         }
+        ClaimUpgradeQuote quote = upgrades.quote(group.claimLimit());
         return new GroupStatePayload(true, type, true, group.id(), group.name(), membership.role(),
-                balance(group.accountId()), balance(group.supportAccountId()), group.claimLimit(),
+                balance(group.accountId()), balance(group.supportAccountId()), quote.currentLimit(),
+                quote.maxLimit(), quote.percentageBasisPoints(), quote.price(), quote.maximumReached(),
+                quote.configurationValid(),
                 group.visitorUseBuyShop(), group.visitorUseSellShop(), members, invites);
     }
 

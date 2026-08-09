@@ -15,7 +15,10 @@ public enum GroupAction {
     CLOSE,
     SET_VISITOR_SHOPS,
     DEPOSIT,
-    WITHDRAW;
+    WITHDRAW,
+    SET_UPGRADE_PAYMENT,
+    BUY_UPGRADE,
+    CLOSE_UPGRADE_PAYMENT;
 
     public static GroupAction byId(int id) {
         GroupAction[] values = values();

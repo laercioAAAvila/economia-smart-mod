@@ -1,17 +1,19 @@
 package br.com.economiamod.server.network;
 
 import br.com.economiamod.EconomiaMod;
+import br.com.economiamod.common.claim.DirectPaymentMethod;
 import br.com.economiamod.common.group.GroupType;
 import br.com.economiamod.common.invoice.ClaimInvoiceItemDataService;
 import br.com.economiamod.common.menu.ClaimAnchorMenu;
 import br.com.economiamod.common.network.ClaimAnchorActionPayload;
+import br.com.economiamod.common.network.OpenClaimChunkMapPayload;
 import br.com.economiamod.server.claim.ClaimAnchorMenuState;
 import br.com.economiamod.server.claim.ClaimAnchorMenuStateService;
+import br.com.economiamod.server.claim.ClaimDirectPaymentService;
 import br.com.economiamod.server.claim.ClaimInvoiceRecord;
 import br.com.economiamod.server.claim.ClaimInvoiceResult;
 import br.com.economiamod.server.claim.ClaimInvoiceService;
 import br.com.economiamod.server.claim.ClaimOperationResult;
-import br.com.economiamod.server.claim.ClaimService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import java.sql.Connection;
@@ -22,9 +24,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class ClaimAnchorActionPayloadHandler {
-    private static final ClaimService CLAIMS = new ClaimService();
+    private static final ClaimDirectPaymentService DIRECT_PAYMENTS = new ClaimDirectPaymentService();
     private static final ClaimInvoiceService INVOICES = new ClaimInvoiceService();
     private static final ClaimAnchorMenuStateService STATES = new ClaimAnchorMenuStateService();
     private static final ClaimInvoiceItemDataService ITEMS = new ClaimInvoiceItemDataService();
@@ -44,11 +47,15 @@ public final class ClaimAnchorActionPayloadHandler {
         try {
             ClaimAnchorMenuState fresh = STATES.state(player.getUUID(), menu.state().anchorId());
             switch (payload.action()) {
-                case CLAIM -> claim(player, fresh);
+                case CLAIM, OPEN_PAYMENT -> openPayment(player, menu, fresh);
+                case SET_PAYMENT_MODE -> setPaymentMode(player, menu, payload.text());
+                case PAY_CLAIM -> payClaim(player, menu, fresh, payload);
+                case CLOSE_PAYMENT -> menu.setPaymentMode(player, false, false);
                 case ANCHOR_INVOICE -> anchorInvoice(player, fresh, payload.days());
                 case SALE_INVOICE -> saleInvoice(player, fresh, payload.text(), payload.amount());
                 case INVITE_MEMBER -> inviteMember(player, fresh, payload.text());
                 case REISSUE_INVOICES -> reissueInvoices(player, fresh);
+                case OPEN_CHUNK_MAP -> openChunkMap(player, fresh);
             }
         } catch (SQLException | RuntimeException exception) {
             EconomiaMod.LOGGER.warn("Falha ao processar menu do claim.", exception);
@@ -56,17 +63,53 @@ public final class ClaimAnchorActionPayloadHandler {
         }
     }
 
-    private static void claim(ServerPlayer player, ClaimAnchorMenuState state) throws SQLException {
+    private static void openChunkMap(ServerPlayer player, ClaimAnchorMenuState state) {
+        if (!state.active() || !state.canManage() || !state.canBuyChunk()) {
+            denied(player, state.chunkCount() >= state.chunkLimit() ? "claim_limit" : "owner_required");
+            return;
+        }
+        player.closeContainer();
+        PacketDistributor.sendToPlayer(player, new OpenClaimChunkMapPayload(state.anchorId(), state.groupType(),
+                state.dimension(), state.blockX(), state.blockZ(), state.nextChunkPrice()));
+    }
+
+    private static void openPayment(ServerPlayer player, ClaimAnchorMenu menu, ClaimAnchorMenuState state) {
         if (!state.canClaim()) {
             denied(player, "claim_limit");
             return;
         }
-        ClaimOperationResult result = CLAIMS.activateAnchor(player.getUUID(), state.anchorId());
-        if (!result.success()) {
-            denied(player, result.code());
+        menu.setPaymentMode(player, true, false);
+    }
+
+    private static void setPaymentMode(ServerPlayer player, ClaimAnchorMenu menu, String value) {
+        if (!menu.paymentOpen()) {
+            denied(player, "payment_closed");
             return;
         }
-        giveInvoice(player, result.id());
+        DirectPaymentMethod method = DirectPaymentMethod.parse(value);
+        menu.setPaymentMode(player, true, method == DirectPaymentMethod.CASH);
+    }
+
+    private static void payClaim(ServerPlayer player, ClaimAnchorMenu menu, ClaimAnchorMenuState state,
+                                 ClaimAnchorActionPayload payload) throws SQLException {
+        if (!menu.paymentOpen()) {
+            denied(player, "payment_closed");
+            return;
+        }
+        DirectPaymentMethod method = DirectPaymentMethod.parse(payload.text());
+        if ((method == DirectPaymentMethod.CASH) != menu.cashMode()) {
+            denied(player, "payment_mode_invalid");
+            return;
+        }
+        ClaimOperationResult result = DIRECT_PAYMENTS.payAndActivate(player, state.anchorId(), method,
+                menu.paymentCard(), menu.paymentCash(), payload.amount(), payload.requestId());
+        if (!result.success()) {
+            denied(player, result.code());
+            if ("payment_price_changed".equals(result.code())) {
+                player.closeContainer();
+            }
+            return;
+        }
         player.displayClientMessage(Component.translatable("claim.economia.activated"), true);
         player.closeContainer();
     }

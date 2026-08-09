@@ -5,6 +5,7 @@ import br.com.economiamod.common.card.CardItemDataService;
 import br.com.economiamod.common.gold.GoldUnitConverter;
 import br.com.economiamod.common.invoice.InvoiceItemDataService;
 import br.com.economiamod.common.invoice.ClaimInvoiceItemDataService;
+import br.com.economiamod.common.money.MoneyStackCalculator;
 import br.com.economiamod.common.network.AtmSessionStatePayload;
 import br.com.economiamod.registry.ModMenus;
 import br.com.economiamod.registry.ModBlocks;
@@ -36,12 +37,15 @@ import net.neoforged.neoforge.network.PacketDistributor;
 public final class AtmMenu extends AbstractContainerMenu {
     public static final int CARD_SLOT_INDEX = 0;
     public static final int INVOICE_SLOT_INDEX = 1;
-    private static final int PLAYER_INVENTORY_START = 2;
+    public static final int OPENING_CASH_START = 2;
+    public static final int OPENING_CASH_END = 8;
+    private static final int PLAYER_INVENTORY_START = OPENING_CASH_END;
     private static final int PLAYER_HOTBAR_START = PLAYER_INVENTORY_START + 27;
     private static final int PLAYER_INVENTORY_END = PLAYER_INVENTORY_START + 36;
 
     private final SimpleContainer cardContainer = new SimpleContainer(1);
     private final SimpleContainer invoiceContainer = new SimpleContainer(1);
+    private final SimpleContainer openingCashContainer = new SimpleContainer(6);
     private final CardItemDataService cardItemDataService = new CardItemDataService();
     private final InvoiceItemDataService invoiceItemDataService = new InvoiceItemDataService();
     private final ClaimInvoiceItemDataService claimInvoiceItemDataService = new ClaimInvoiceItemDataService();
@@ -52,6 +56,7 @@ public final class AtmMenu extends AbstractContainerMenu {
     private final Block expectedBlock;
     private final Player menuPlayer;
     private boolean slotsVisible = true;
+    private int accountOpeningVisibleFlag;
     private PlayerInventoryMode playerInventoryMode = PlayerInventoryMode.FULL;
     private CardSlotMode cardSlotMode = CardSlotMode.LOGIN;
     private String sessionAccountNumber = "";
@@ -61,6 +66,7 @@ public final class AtmMenu extends AbstractContainerMenu {
     private int goldBuyIngotValue = 9;
     private int goldBuyBlockValue = 81;
     private int cardIssueFee = 10;
+    private int accountOpeningFee = 1_000;
 
     public AtmMenu(int containerId, Inventory inventory) {
         this(containerId, inventory, null, null);
@@ -79,6 +85,7 @@ public final class AtmMenu extends AbstractContainerMenu {
         addDataSlots();
         addCardSlot();
         addInvoiceSlot();
+        addOpeningCashSlots();
         addPlayerInventorySlots(inventory);
         refreshGoldPricing(inventory.player);
     }
@@ -93,6 +100,14 @@ public final class AtmMenu extends AbstractContainerMenu {
 
     public ItemStack invoiceStack() {
         return invoiceContainer.getItem(0);
+    }
+
+    public SimpleContainer openingCash() {
+        return openingCashContainer;
+    }
+
+    public long accountOpeningFee() {
+        return accountOpeningFee;
     }
 
     public void clearCardSlot() {
@@ -114,6 +129,22 @@ public final class AtmMenu extends AbstractContainerMenu {
 
     public void setSlotsVisible(boolean slotsVisible) {
         this.slotsVisible = slotsVisible;
+    }
+
+    public void setAccountOpeningVisible(boolean visible) {
+        accountOpeningVisibleFlag = visible ? 1 : 0;
+    }
+
+    public void setAccountOpeningVisible(ServerPlayer player, boolean visible) {
+        setAccountOpeningVisible(visible);
+        if (!visible) {
+            clearContainer(player, openingCashContainer);
+        }
+        broadcastChanges();
+    }
+
+    public boolean accountOpeningVisible() {
+        return accountOpeningVisibleFlag == 1;
     }
 
     public void setPlayerInventoryMode(PlayerInventoryMode playerInventoryMode) {
@@ -210,9 +241,13 @@ public final class AtmMenu extends AbstractContainerMenu {
         ItemStack current = slot.getItem();
         ItemStack original = current.copy();
 
-        if (slotIndex == CARD_SLOT_INDEX || slotIndex == INVOICE_SLOT_INDEX) {
+        if (slotIndex < PLAYER_INVENTORY_START) {
             int targetStart = playerInventoryMode == PlayerInventoryMode.HOTBAR ? PLAYER_HOTBAR_START : PLAYER_INVENTORY_START;
             if (!moveItemStackTo(current, targetStart, PLAYER_INVENTORY_END, true)) {
+                return ItemStack.EMPTY;
+            }
+        } else if (accountOpeningVisible() && MoneyStackCalculator.isBanknote(current)) {
+            if (!moveItemStackTo(current, OPENING_CASH_START, OPENING_CASH_END, false)) {
                 return ItemStack.EMPTY;
             }
         } else if (cardItemDataService.isValidCardItem(current)) {
@@ -241,6 +276,10 @@ public final class AtmMenu extends AbstractContainerMenu {
         super.removed(player);
         clearContainer(player, cardContainer);
         clearContainer(player, invoiceContainer);
+        clearContainer(player, openingCashContainer);
+        if (player instanceof ServerPlayer serverPlayer) {
+            BankSessionService.INSTANCE.logout(serverPlayer);
+        }
     }
 
     private void addCardSlot() {
@@ -281,6 +320,22 @@ public final class AtmMenu extends AbstractContainerMenu {
         });
     }
 
+    private void addOpeningCashSlots() {
+        for (int slot = 0; slot < 6; slot++) {
+            addSlot(new Slot(openingCashContainer, slot, 190 + (slot % 3) * 18, 96 + (slot / 3) * 18) {
+                @Override
+                public boolean mayPlace(ItemStack stack) {
+                    return MoneyStackCalculator.isBanknote(stack);
+                }
+
+                @Override
+                public boolean isActive() {
+                    return accountOpeningVisible();
+                }
+            });
+        }
+    }
+
     private void addDataSlots() {
         addDataSlot(new DataSlot() {
             @Override
@@ -291,6 +346,28 @@ public final class AtmMenu extends AbstractContainerMenu {
             @Override
             public void set(int value) {
                 goldBuyBaseNuggetValue = Math.max(1, value);
+            }
+        });
+        addDataSlot(new DataSlot() {
+            @Override
+            public int get() {
+                return clampToIntAllowZero(EconomyServerConfig.BANK_ACCOUNT_OPENING_FEE.get());
+            }
+
+            @Override
+            public void set(int value) {
+                accountOpeningFee = Math.max(0, value);
+            }
+        });
+        addDataSlot(new DataSlot() {
+            @Override
+            public int get() {
+                return accountOpeningVisibleFlag;
+            }
+
+            @Override
+            public void set(int value) {
+                accountOpeningVisibleFlag = value == 1 ? 1 : 0;
             }
         });
         addDataSlot(new DataSlot() {
@@ -356,7 +433,8 @@ public final class AtmMenu extends AbstractContainerMenu {
                 addSlot(new Slot(inventory, column + row * 9 + 9, 94 + column * 18, 166 + row * 18) {
                     @Override
                     public boolean isActive() {
-                        return slotsVisible && playerInventoryMode == PlayerInventoryMode.FULL;
+                        return accountOpeningVisible()
+                                || (slotsVisible && playerInventoryMode == PlayerInventoryMode.FULL);
                     }
                 });
             }
@@ -365,8 +443,9 @@ public final class AtmMenu extends AbstractContainerMenu {
         for (int column = 0; column < 9; column++) {
             addSlot(new Slot(inventory, column, 94 + column * 18, 224) {
                 @Override
-                public boolean isActive() {
-                    return slotsVisible && playerInventoryMode != PlayerInventoryMode.NONE;
+                    public boolean isActive() {
+                    return accountOpeningVisible()
+                            || (slotsVisible && playerInventoryMode != PlayerInventoryMode.NONE);
                 }
             });
         }
@@ -449,6 +528,10 @@ public final class AtmMenu extends AbstractContainerMenu {
 
     private int clampToInt(long value) {
         return Math.toIntExact(Math.max(1L, Math.min(Integer.MAX_VALUE, value)));
+    }
+
+    private int clampToIntAllowZero(long value) {
+        return Math.toIntExact(Math.max(0L, Math.min(Integer.MAX_VALUE, value)));
     }
 
     private long safeMultiply(long value, long multiplier) {

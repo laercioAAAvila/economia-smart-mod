@@ -169,6 +169,12 @@ public final class ClaimRepository {
         }
     }
 
+    public int claimCount(UUID groupId) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            return claimCount(connection, groupId);
+        }
+    }
+
     public List<ClaimRecord> claimsAround(String dimension, int centerChunkX, int centerChunkZ, int radius) throws SQLException {
         List<ClaimRecord> claims = new ArrayList<>();
         try (Connection connection = EconomyDatabase.getConnection();

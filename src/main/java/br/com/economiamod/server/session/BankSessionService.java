@@ -30,6 +30,7 @@ public final class BankSessionService {
                 accountNumber == null ? "" : accountNumber,
                 showUsername,
                 loginCardId,
+                0,
                 now,
                 now.plus(sessionTimeout())
         );
@@ -55,8 +56,27 @@ public final class BankSessionService {
         return sessions.remove(player.getUUID()) != null;
     }
 
+    public int recordInvalidPassword(ServerPlayer player) {
+        BankSession updated = sessions.computeIfPresent(player.getUUID(), (ignored, session) -> new BankSession(
+                session.playerUuid(), session.accountId(), session.username(), session.accountNumber(),
+                session.showUsername(), session.loginCardId(), session.failedPasswordAttempts() + 1,
+                session.createdAt(), session.expiresAt()));
+        return updated == null ? 0 : updated.failedPasswordAttempts();
+    }
+
+    public void resetInvalidPasswords(ServerPlayer player) {
+        sessions.computeIfPresent(player.getUUID(), (ignored, session) -> new BankSession(
+                session.playerUuid(), session.accountId(), session.username(), session.accountNumber(),
+                session.showUsername(), session.loginCardId(), 0, session.createdAt(), session.expiresAt()));
+    }
+
     public void logout(UUID playerUuid) {
         sessions.remove(playerUuid);
+    }
+
+    public void logout(UUID playerUuid, UUID accountId) {
+        sessions.computeIfPresent(playerUuid,
+                (ignored, session) -> session.accountId().equals(accountId) ? null : session);
     }
 
     public void clear() {

@@ -41,5 +41,6 @@ public final class ModNetwork {
         registrar.playToClient(MapDataPayload.TYPE, MapDataPayload.STREAM_CODEC, ClientboundMapDataHandler::handle);
         registrar.playToClient(GroupStatePayload.TYPE, GroupStatePayload.STREAM_CODEC, ClientboundGroupStateHandler::handle);
         registrar.playToClient(OpenSharedLocationPayload.TYPE, OpenSharedLocationPayload.STREAM_CODEC, ClientboundOpenSharedLocationHandler::handle);
+        registrar.playToClient(OpenClaimChunkMapPayload.TYPE, OpenClaimChunkMapPayload.STREAM_CODEC, ClientboundOpenClaimChunkMapHandler::handle);
     }
 }

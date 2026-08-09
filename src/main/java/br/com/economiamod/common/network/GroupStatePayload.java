@@ -13,6 +13,8 @@ import net.minecraft.resources.ResourceLocation;
 
 public record GroupStatePayload(boolean authenticated, GroupType groupType, boolean hasGroup, UUID groupId,
                                 String groupName, GroupRole role, long balance, long supportBalance, int claimLimit,
+                                int upgradeMaxLimit, int upgradePercentageBasisPoints, long upgradePrice,
+                                boolean upgradeMaximumReached, boolean upgradeConfigurationValid,
                                 boolean visitorBuyShop, boolean visitorSellShop,
                                 List<MemberSummary> members, List<InviteSummary> invites) implements CustomPacketPayload {
     private static final UUID ZERO = new UUID(0L, 0L);
@@ -32,6 +34,11 @@ public record GroupStatePayload(boolean authenticated, GroupType groupType, bool
             long balance = buffer.readLong();
             long support = buffer.readLong();
             int claimLimit = buffer.readVarInt();
+            int upgradeMaxLimit = buffer.readVarInt();
+            int upgradePercentageBasisPoints = buffer.readVarInt();
+            long upgradePrice = buffer.readLong();
+            boolean upgradeMaximumReached = buffer.readBoolean();
+            boolean upgradeConfigurationValid = buffer.readBoolean();
             boolean visitorBuy = buffer.readBoolean();
             boolean visitorSell = buffer.readBoolean();
             int memberCount = Math.min(1000, Math.max(0, buffer.readVarInt()));
@@ -46,7 +53,8 @@ public record GroupStatePayload(boolean authenticated, GroupType groupType, bool
                 invites.add(new InviteSummary(buffer.readUUID(), buffer.readUUID(), buffer.readUtf(64)));
             }
             return new GroupStatePayload(authenticated, type, hasGroup, groupId, name, role, balance, support,
-                    claimLimit, visitorBuy, visitorSell, members, invites);
+                    claimLimit, upgradeMaxLimit, upgradePercentageBasisPoints, upgradePrice,
+                    upgradeMaximumReached, upgradeConfigurationValid, visitorBuy, visitorSell, members, invites);
         }
 
         @Override
@@ -60,6 +68,11 @@ public record GroupStatePayload(boolean authenticated, GroupType groupType, bool
             buffer.writeLong(payload.balance());
             buffer.writeLong(payload.supportBalance());
             buffer.writeVarInt(Math.max(0, payload.claimLimit()));
+            buffer.writeVarInt(Math.max(0, payload.upgradeMaxLimit()));
+            buffer.writeVarInt(Math.max(0, payload.upgradePercentageBasisPoints()));
+            buffer.writeLong(Math.max(0L, payload.upgradePrice()));
+            buffer.writeBoolean(payload.upgradeMaximumReached());
+            buffer.writeBoolean(payload.upgradeConfigurationValid());
             buffer.writeBoolean(payload.visitorBuyShop());
             buffer.writeBoolean(payload.visitorSellShop());
             buffer.writeVarInt(payload.members().size());

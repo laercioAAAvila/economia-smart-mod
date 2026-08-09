@@ -1,5 +1,7 @@
 # Atualização da história — Claims, propriedades privadas, âncoras e vendas
 
+> O pagamento inicial de `Dar Claim` foi atualizado por `HIST-DEV-31`. O pagamento agora ocorre no próprio fluxo do Bloco de Claim antes da ativação; boletos de âncora e venda continuam válidos.
+
 ## Propriedade privada
 
 A Propriedade Privada é um lote particular do jogador e não possui líder. Qualquer
@@ -10,13 +12,15 @@ como membros daquela propriedade.
 Colocar o bloco cria somente uma âncora pendente. No primeiro acesso, a interface mostra
 tipo, posição, preço calculado, quantidade de territórios do proprietário e limite
 configurado. `Dar Claim` só fica disponível quando o limite e as regras territoriais
-forem atendidos. `ESC` e `Sair` fecham a interface sem criar o território.
+forem atendidos. Ao confirmar, abre o pagamento por cartão ou dinheiro. `ESC`, `Sair`
+ou pagamento recusado fecham o fluxo sem criar o território.
 
 ## Claim do clã
 
 O bloco do clã também nasce pendente. Ao abrir, exibe posição, preço e territórios
 atuais/limite. Somente a liderança autorizada confirma `Dar Claim`; a confirmação segue
-as regras de claim, cria a dívida do terreno e gera o boleto correspondente.
+as regras de claim e abre o pagamento. O território só é ativado após confirmação
+financeira idempotente.
 
 ## Preço do terreno
 
@@ -53,9 +57,10 @@ o máximo. A venda não cancela dias já pagos.
 
 ## Boletos
 
-Claims, âncoras e vendas geram boletos persistidos e vinculados ao território. O Caixa
+Âncoras e vendas geram boletos persistidos e vinculados ao território. O Caixa
 Eletrônico aceita esses boletos e conclui seus efeitos somente depois de um pagamento
-confirmado e idempotente.
+confirmado e idempotente. A cobrança inicial do claim é concluída no próprio Bloco de
+Claim conforme `HIST-DEV-31`.
 
 ## Venda
 

@@ -1,6 +1,7 @@
 package br.com.economiamod.server.claim;
 
 import br.com.economiamod.common.group.GroupRole;
+import br.com.economiamod.common.group.GroupSummary;
 import br.com.economiamod.common.group.GroupType;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.group.GroupRepository;
@@ -39,11 +40,17 @@ public final class ClaimAnchorMenuStateService {
         if (anchor.anchorPaidUntilMillis() > now) {
             suggested = safeAdd(suggested, anchorPrice);
         }
-        return new ClaimAnchorMenuState(anchor.id(), anchor.territoryId(), anchor.groupType(),
+        GroupSummary group = anchor.groupId() == null ? null : groups.group(anchor.groupId()).orElse(null);
+        int chunkCount = group == null ? 0 : repository.claimCount(group.id());
+        int chunkLimit = group == null ? 0 : group.claimLimit();
+        long nextChunkPrice = prices.landPrice(anchor.dimension(), anchor.blockX(), anchor.blockZ());
+        boolean canBuyChunk = anchor.active() && controller && group != null && chunkCount < chunkLimit;
+        return new ClaimAnchorMenuState(anchor.id(), anchor.territoryId(), anchor.groupType(), anchor.dimension(),
                 anchor.blockX(), anchor.blockY(), anchor.blockZ(), landPrice, anchor.landDebt(), count, limit,
                 anchor.active(), controller, controller && !anchor.active() && count < limit,
                 anchorPrice, days, EconomyServerConfig.ANCHOR_DEFAULT_MINECRAFT_DAYS.get(),
-                EconomyServerConfig.ANCHOR_MAX_MINECRAFT_DAYS.get(), suggested);
+                EconomyServerConfig.ANCHOR_MAX_MINECRAFT_DAYS.get(), suggested,
+                chunkCount, chunkLimit, nextChunkPrice, canBuyChunk);
     }
 
     private UUID owner(UUID territoryId) {

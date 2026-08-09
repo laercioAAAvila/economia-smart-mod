@@ -2,6 +2,7 @@ package br.com.economiamod.client.screen;
 
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.TerritoryPermission;
+import br.com.economiamod.common.claim.DirectPaymentMethod;
 import br.com.economiamod.common.menu.GroupManagementMenu;
 import br.com.economiamod.common.network.GroupAction;
 import br.com.economiamod.common.network.GroupActionPayload;
@@ -28,6 +29,8 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
     private EditBox textInput;
     private EditBox amountInput;
     private int listPage;
+    private DirectPaymentMethod upgradePaymentMethod = DirectPaymentMethod.DEBIT;
+    private boolean upgradePurchasePending;
 
     public GroupManagementScreen(GroupManagementMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -45,6 +48,7 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
 
     public void applyState(GroupStatePayload payload) {
         state = payload;
+        upgradePurchasePending = false;
         if (!payload.authenticated()) {
             page = Page.LOGIN;
         } else if (!payload.hasGroup() && page != Page.CREATE && page != Page.INVITES) {
@@ -110,7 +114,9 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
             addButton(166, 74, 126, "screen.economia.group.permissions", () -> open(Page.PERMISSIONS));
         }
         addButton(24, 100, 126, "screen.economia.group.settings", () -> open(Page.SETTINGS));
-        addButton(166, 100, 126, "screen.economia.group.upgrades", () -> open(Page.UPGRADE));
+        if (state.role() == GroupRole.OWNER || state.role().leadsClan()) {
+            addButton(166, 100, 126, "screen.economia.group.upgrades", () -> open(Page.UPGRADE));
+        }
         addButton(212, 132, 80, "screen.economia.common.exit", this::onClose);
     }
 
@@ -120,8 +126,17 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
     }
 
     private void buildUpgrade() {
-        Button buy = addButton(166, 92, 126, "screen.economia.group.buy", () -> {});
-        buy.active = false;
+        if (state.upgradeMaximumReached() || !state.upgradeConfigurationValid()) {
+            return;
+        }
+        addRawButton(24, 106, 80, paymentLabel(DirectPaymentMethod.DEBIT),
+                () -> selectUpgradePayment(DirectPaymentMethod.DEBIT));
+        addRawButton(110, 106, 80, paymentLabel(DirectPaymentMethod.CREDIT),
+                () -> selectUpgradePayment(DirectPaymentMethod.CREDIT));
+        addRawButton(196, 106, 80, paymentLabel(DirectPaymentMethod.CASH),
+                () -> selectUpgradePayment(DirectPaymentMethod.CASH));
+        Button buy = addButton(166, 132, 126, "screen.economia.group.buy", this::buyUpgrade);
+        buy.active = !upgradePurchasePending;
     }
 
     private void addInviteButtons() {
@@ -227,7 +242,18 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
         return button;
     }
 
-    private void open(Page next) { page = next; listPage = 0; rebuildPage(); }
+    private void open(Page next) {
+        if (page == Page.UPGRADE && next != Page.UPGRADE) {
+            send(GroupAction.CLOSE_UPGRADE_PAYMENT);
+        }
+        page = next;
+        listPage = 0;
+        if (next == Page.UPGRADE) {
+            upgradePaymentMethod = DirectPaymentMethod.DEBIT;
+            sendUpgradePaymentMode(false);
+        }
+        rebuildPage();
+    }
 
     private void send(GroupAction action) { PacketDistributor.sendToServer(GroupActionPayload.simple(action)); }
 
@@ -259,12 +285,34 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
                 new UUID(0L, 0L), 0, 0L, buy, sell, UUID.randomUUID()));
     }
 
+    private void selectUpgradePayment(DirectPaymentMethod method) {
+        upgradePaymentMethod = method;
+        sendUpgradePaymentMode(method == DirectPaymentMethod.CASH);
+        rebuildPage();
+    }
+
+    private void sendUpgradePaymentMode(boolean cash) {
+        PacketDistributor.sendToServer(new GroupActionPayload(GroupAction.SET_UPGRADE_PAYMENT, "",
+                new UUID(0L, 0L), 0, 0L, cash, false, UUID.randomUUID()));
+    }
+
+    private void buyUpgrade() {
+        if (upgradePurchasePending || state == null) {
+            return;
+        }
+        upgradePurchasePending = true;
+        PacketDistributor.sendToServer(new GroupActionPayload(GroupAction.BUY_UPGRADE,
+                upgradePaymentMethod.name(), new UUID(0L, 0L), state.claimLimit(), state.upgradePrice(),
+                upgradePaymentMethod == DirectPaymentMethod.CASH, false, UUID.randomUUID()));
+        rebuildPage();
+    }
+
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         graphics.fill(leftPos, topPos, leftPos + imageWidth, topPos + imageHeight, 0xFF171B1D);
         graphics.fill(leftPos + 6, topPos + 6, leftPos + imageWidth - 6, topPos + 30, 0xFF2F4B5B);
         if (page == Page.LOGIN || state == null || !state.authenticated()) {
-            graphics.fill(leftPos + 79, topPos + 35, leftPos + 98, topPos + 54, 0xFF424A4E);
+            InventorySlotRenderer.draw(graphics, leftPos + 80, topPos + 36);
         }
         drawRows(graphics);
         drawInventory(graphics);
@@ -311,18 +359,40 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
         if (page == Page.UPGRADE) {
             graphics.drawString(font, Component.translatable("screen.economia.group.current_limit", state.claimLimit()),
                     leftPos + 34, topPos + 50, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("screen.economia.group.next_limit", state.claimLimit() + 1),
+            graphics.drawString(font, Component.translatable("screen.economia.group.next_limit",
+                            state.upgradeMaximumReached() ? state.claimLimit() : state.claimLimit() + 1),
                     leftPos + 34, topPos + 66, 0xFFFFFFFF, false);
-            graphics.drawString(font, Component.translatable("screen.economia.group.price_not_configured"),
-                    leftPos + 34, topPos + 82, 0xFFFFB74D, false);
+            if (!state.upgradeConfigurationValid()) {
+                graphics.drawString(font, Component.translatable("screen.economia.group.upgrade_invalid_config"),
+                        leftPos + 34, topPos + 84, 0xFFFF6B6B, false);
+            } else if (state.upgradeMaximumReached()) {
+                graphics.drawString(font, Component.translatable("screen.economia.group.upgrade_maximum",
+                                state.claimLimit(), state.upgradeMaxLimit()),
+                        leftPos + 34, topPos + 84, 0xFFFFB74D, false);
+            } else {
+                graphics.drawString(font, Component.translatable("screen.economia.group.upgrade_percentage",
+                                percentage(state.upgradePercentageBasisPoints())),
+                        leftPos + 34, topPos + 82, 0xFFFFFFFF, false);
+                graphics.drawString(font, Component.translatable("screen.economia.group.upgrade_price", state.upgradePrice()),
+                        leftPos + 34, topPos + 94, 0xFFFFFFFF, false);
+                if (upgradePaymentMethod == DirectPaymentMethod.CASH) {
+                    for (int slot = 0; slot < 6; slot++) {
+                        InventorySlotRenderer.draw(graphics, leftPos + 206 + (slot % 3) * 18,
+                                topPos + 48 + (slot / 3) * 18);
+                    }
+                } else {
+                    graphics.drawString(font, Component.translatable("screen.economia.group.authenticated_card"),
+                            leftPos + 196, topPos + 56, 0xFF80DEEA, false);
+                }
+            }
         }
     }
 
     private void drawInventory(GuiGraphics graphics) {
         for (int row = 0; row < 3; row++) for (int col = 0; col < 9; col++)
-            graphics.fill(leftPos + 7 + col * 18, topPos + 155 + row * 18, leftPos + 25 + col * 18, topPos + 173 + row * 18, 0xFF343C40);
+            InventorySlotRenderer.draw(graphics, leftPos + 8 + col * 18, topPos + 156 + row * 18);
         for (int col = 0; col < 9; col++)
-            graphics.fill(leftPos + 7 + col * 18, topPos + 213, leftPos + 25 + col * 18, topPos + 231, 0xFF343C40);
+            InventorySlotRenderer.draw(graphics, leftPos + 8 + col * 18, topPos + 214);
     }
 
     private String roleName(GroupRole role) {
@@ -333,6 +403,16 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
     private String visitorLabel(String shop, boolean enabled) {
         return Component.translatable("screen.economia.group.visitor_" + shop,
                 enabled ? "ON" : "OFF").getString();
+    }
+
+    private String paymentLabel(DirectPaymentMethod method) {
+        String key = "screen.economia.payment." + method.name().toLowerCase(Locale.ROOT);
+        String label = Component.translatable(key).getString();
+        return method == upgradePaymentMethod ? "[" + label + "]" : label;
+    }
+
+    private String percentage(int basisPoints) {
+        return "%d,%02d%%".formatted(basisPoints / 100, Math.abs(basisPoints % 100));
     }
 
     @Override

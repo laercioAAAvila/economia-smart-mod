@@ -7,6 +7,7 @@ public record ClaimAnchorMenuState(
         UUID anchorId,
         UUID territoryId,
         GroupType groupType,
+        String dimension,
         int blockX,
         int blockY,
         int blockZ,
@@ -21,6 +22,10 @@ public record ClaimAnchorMenuState(
         int anchorDaysRemaining,
         int defaultAnchorDays,
         int maxAnchorDays,
-        long suggestedSalePrice
+        long suggestedSalePrice,
+        int chunkCount,
+        int chunkLimit,
+        long nextChunkPrice,
+        boolean canBuyChunk
 ) {
 }

@@ -9,6 +9,8 @@ import br.com.economiamod.server.group.GroupManagementStateService;
 import br.com.economiamod.server.group.GroupOperationResult;
 import br.com.economiamod.server.group.GroupRepository;
 import br.com.economiamod.server.group.GroupService;
+import br.com.economiamod.server.group.ClaimLimitUpgradeService;
+import br.com.economiamod.common.claim.DirectPaymentMethod;
 import br.com.economiamod.server.group.ServerActiveClockService;
 import java.sql.SQLException;
 import java.util.UUID;
@@ -22,6 +24,7 @@ public final class GroupActionPayloadHandler {
     private static final GroupRepository REPOSITORY = new GroupRepository();
     private static final GroupBankingService BANKING = new GroupBankingService();
     private static final GroupManagementStateService STATE = new GroupManagementStateService();
+    private static final ClaimLimitUpgradeService UPGRADES = new ClaimLimitUpgradeService();
 
     private GroupActionPayloadHandler() {
     }
@@ -77,6 +80,19 @@ public final class GroupActionPayloadHandler {
                     if (membership != null) {
                         BANKING.withdraw(player.getUUID(), membership.groupId(), payload.firstFlag(), payload.amount(),
                                 "group-withdraw:" + payload.requestId());
+                    }
+                }
+                case SET_UPGRADE_PAYMENT -> menu.setUpgradePayment(player, true, payload.firstFlag());
+                case CLOSE_UPGRADE_PAYMENT -> menu.setUpgradePayment(player, false, false);
+                case BUY_UPGRADE -> {
+                    if (membership != null && menu.upgradePaymentOpen()) {
+                        result = UPGRADES.purchase(player, membership.groupId(),
+                                DirectPaymentMethod.parse(payload.text()), menu.paymentCard(), menu.paymentCash(),
+                                payload.intValue(), payload.amount(), payload.requestId());
+                        if (result.success()) {
+                            menu.setUpgradePayment(player, false, false);
+                            player.displayClientMessage(Component.translatable("group.economia.upgrade_purchased"), true);
+                        }
                     }
                 }
                 case AUTHENTICATE -> {

@@ -17,6 +17,7 @@ public final class AccountQueryService {
                        account_number
                   FROM economy_accounts
                  WHERE id = ?
+                   AND server_uuid = ?
                    AND account_type = 'PLAYER'
                    AND status = 'ACTIVE'
                 """;
@@ -24,6 +25,7 @@ public final class AccountQueryService {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, accountId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next()
@@ -42,16 +44,36 @@ public final class AccountQueryService {
                 SELECT id
                   FROM economy_accounts
                  WHERE player_uuid = ?
+                   AND server_uuid = ?
                    AND account_type = 'PLAYER'
                    AND status = 'ACTIVE'
+                 ORDER BY created_at, id
+                 LIMIT 1
                 """;
 
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, playerUuid);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(resultSet.getObject("id", UUID.class)) : Optional.empty();
+            }
+        }
+    }
+
+    public boolean playerOwnsActiveAccount(UUID playerUuid, UUID accountId) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT 1 FROM economy_accounts
+                      WHERE id = ? AND server_uuid = ? AND player_uuid = ?
+                        AND account_type = 'PLAYER' AND status = 'ACTIVE'
+                     """)) {
+            statement.setObject(1, accountId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(3, playerUuid);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
             }
         }
     }
@@ -61,6 +83,7 @@ public final class AccountQueryService {
                 SELECT id
                   FROM economy_accounts
                  WHERE account_number = ?
+                   AND server_uuid = ?
                    AND account_type = 'PLAYER'
                    AND status = 'ACTIVE'
                 """;
@@ -68,6 +91,7 @@ public final class AccountQueryService {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, accountNumber);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(resultSet.getObject("id", UUID.class)) : Optional.empty();
@@ -85,6 +109,7 @@ public final class AccountQueryService {
                        credit_interest_outstanding
                   FROM economy_accounts
                  WHERE id = ?
+                   AND server_uuid = ?
                    AND account_type = 'PLAYER'
                    AND status = 'ACTIVE'
                 """;
@@ -92,6 +117,7 @@ public final class AccountQueryService {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, accountId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {

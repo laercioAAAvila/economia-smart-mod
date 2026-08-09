@@ -5,11 +5,14 @@ import br.com.economiamod.common.claim.ClaimRecord;
 import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.GroupType;
+import br.com.economiamod.common.invoice.ClaimInvoiceItemDataService;
 import br.com.economiamod.common.network.MapActionPayload;
 import br.com.economiamod.common.network.MapDataPayload;
 import br.com.economiamod.server.claim.ClaimRepository;
 import br.com.economiamod.server.claim.ClaimService;
 import br.com.economiamod.server.claim.ClaimOperationResult;
+import br.com.economiamod.server.claim.ClaimInvoiceRecord;
+import br.com.economiamod.server.claim.ClaimInvoiceService;
 import br.com.economiamod.server.group.GroupRepository;
 import br.com.economiamod.server.group.GroupChatService;
 import br.com.economiamod.server.group.PrivatePropertyAccessService;
@@ -30,6 +33,8 @@ public final class MapActionPayloadHandler {
     private static final ClaimRepository CLAIMS = new ClaimRepository();
     private static final GroupRepository GROUPS = new GroupRepository();
     private static final ClaimService CLAIM_SERVICE = new ClaimService();
+    private static final ClaimInvoiceService INVOICES = new ClaimInvoiceService();
+    private static final ClaimInvoiceItemDataService INVOICE_ITEMS = new ClaimInvoiceItemDataService();
     private static final PrivatePropertyAccessService PRIVATE_PROPERTIES = new PrivatePropertyAccessService();
 
     private MapActionPayloadHandler() {
@@ -67,12 +72,42 @@ public final class MapActionPayloadHandler {
                         centerChunkX = payload.x();
                         centerChunkZ = payload.z();
                     }
+                    case PURCHASE_CLAIM -> {
+                        purchaseClaim(serverPlayer, payload);
+                        centerChunkX = payload.x();
+                        centerChunkZ = payload.z();
+                    }
                 }
                 sync(serverPlayer, centerChunkX, centerChunkZ);
             } catch (SQLException | IllegalArgumentException exception) {
                 EconomiaMod.LOGGER.warn("Falha ao processar ação do mapa.", exception);
             }
         });
+    }
+
+    private static void purchaseClaim(ServerPlayer player, MapActionPayload payload) throws SQLException {
+        String currentDimension = player.serverLevel().dimension().location().toString();
+        if (!currentDimension.equals(payload.dimension())) {
+            player.displayClientMessage(Component.translatable("claim.economia.error.invalid_dimension"), true);
+            return;
+        }
+        ClaimOperationResult result = CLAIM_SERVICE.purchaseChunk(player.getUUID(), payload.targetId(),
+                currentDimension, payload.x(), payload.z());
+        if (!result.success()) {
+            player.displayClientMessage(Component.translatable("claim.economia.error." + result.code()), true);
+            return;
+        }
+        ClaimInvoiceRecord invoice = INVOICES.invoice(result.id());
+        if (invoice == null) {
+            player.displayClientMessage(Component.translatable("commands.economia.unavailable"), true);
+            return;
+        }
+        var stack = INVOICE_ITEMS.create(invoice.id(), invoice.amount(), invoice.invoiceType());
+        if (!player.getInventory().add(stack)) {
+            player.drop(stack, false);
+        }
+        player.displayClientMessage(Component.translatable(
+                "claim.economia.chunk_purchased", invoice.amount()), true);
     }
 
     private static void toggleClaim(ServerPlayer player, String requestedChannel,

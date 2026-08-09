@@ -1,6 +1,7 @@
 package br.com.economiamod.server.persistence;
 
 import br.com.economiamod.server.account.SystemAccountInitializer;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.gold.GoldReserveService;
 import br.com.economiamod.server.persistence.migration.MigrationCatalog;
 import br.com.economiamod.server.persistence.migration.MigrationCatalogVerifier;
@@ -23,6 +24,7 @@ public final class DatabaseResetService {
         EconomyDatabase.open(settings);
         dropEconomyObjects();
         new SqlMigrationExecutor(settings).apply(migrations);
+        BankServerIdentityService.INSTANCE.initialize();
         new SystemAccountInitializer().initialize();
         new GoldReserveService().initialize();
         BankSessionService.INSTANCE.clear();
@@ -36,6 +38,8 @@ public final class DatabaseResetService {
             statement.execute("""
                     DROP TABLE IF EXISTS
                         economy_player_locations,
+                        economy_claim_limit_upgrades,
+                        economy_claim_direct_payments,
                         economy_claim_invoices,
                         economy_private_property_members,
                         economy_claims,

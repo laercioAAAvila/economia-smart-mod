@@ -2,11 +2,14 @@ package br.com.economiamod.server.event;
 
 import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.server.account.SystemAccountInitializer;
+import br.com.economiamod.server.account.AccountPlayerIdentityService;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.gold.GoldReserveService;
 import br.com.economiamod.server.group.GroupRepository;
 import br.com.economiamod.server.group.ServerActiveClockService;
 import br.com.economiamod.server.group.ClanLeadershipService;
 import br.com.economiamod.server.group.GroupChatService;
+import br.com.economiamod.server.group.ClaimLimitUpgradeService;
 import br.com.economiamod.server.claim.ClaimAnchorChunkLoaderService;
 import net.neoforged.neoforge.event.ServerChatEvent;
 import br.com.economiamod.server.operation.OperationRecoveryResult;
@@ -43,8 +46,10 @@ public final class EconomyServerEvents {
             DatabaseSettings databaseSettings = DatabaseSettings.fromConfig();
             EconomyDatabase.open(databaseSettings);
             new SqlMigrationExecutor(databaseSettings).apply(verifiedMigrations);
+            BankServerIdentityService.INSTANCE.initialize();
             new SystemAccountInitializer().initialize();
             new GoldReserveService().initialize();
+            new ClaimLimitUpgradeService().normalizeAll();
             ServerActiveClockService.INSTANCE.start();
             new ClanLeadershipService().process(ServerActiveClockService.INSTANCE.currentMillis());
             ClaimAnchorChunkLoaderService.INSTANCE.refresh(event.getServer());
@@ -81,6 +86,7 @@ public final class EconomyServerEvents {
         ServerActiveClockService.INSTANCE.stop();
         EconomyDatabase.close();
         BankSessionService.INSTANCE.clear();
+        BankServerIdentityService.INSTANCE.clear();
         EconomyDatabaseState.unavailable("Servidor parado. Persistencia SQL fechada.", MigrationCatalog.all().size());
     }
 
@@ -119,12 +125,14 @@ public final class EconomyServerEvents {
             return;
         }
         try {
+            new AccountPlayerIdentityService().refresh(
+                    event.getEntity().getUUID(), event.getEntity().getGameProfile().getName());
             new GroupRepository().updateLastActivity(
                     event.getEntity().getUUID(),
                     ServerActiveClockService.INSTANCE.currentMillis()
             );
         } catch (SQLException exception) {
-            EconomiaMod.LOGGER.warn("Falha ao registrar atividade do membro.", exception);
+            EconomiaMod.LOGGER.warn("Falha ao atualizar identidade Minecraft ou atividade social; identificadores omitidos.", exception);
         }
     }
 }

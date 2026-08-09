@@ -13,6 +13,10 @@ public record ChangePasswordResult(ChangePasswordResultType type) {
         return new ChangePasswordResult(ChangePasswordResultType.INACTIVE_ACCOUNT);
     }
 
+    public static ChangePasswordResult usernameMismatch() {
+        return new ChangePasswordResult(ChangePasswordResultType.USERNAME_MISMATCH);
+    }
+
     public static ChangePasswordResult notFound() {
         return new ChangePasswordResult(ChangePasswordResultType.NOT_FOUND);
     }

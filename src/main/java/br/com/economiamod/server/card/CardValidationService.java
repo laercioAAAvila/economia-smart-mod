@@ -6,6 +6,7 @@ import br.com.economiamod.common.card.CardItemDataService;
 import br.com.economiamod.common.card.CardStatus;
 import br.com.economiamod.common.card.CardType;
 import br.com.economiamod.server.persistence.EconomyDatabase;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -37,11 +38,13 @@ public final class CardValidationService {
                   FROM economy_cards c
                   JOIN economy_accounts a ON a.id = c.account_id
                  WHERE c.id = ?
+                   AND a.server_uuid = ?
                 """;
 
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, itemData.cardId());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
 
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
@@ -85,4 +88,3 @@ public final class CardValidationService {
         }
     }
 }
-

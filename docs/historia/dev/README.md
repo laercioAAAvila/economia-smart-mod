@@ -42,6 +42,12 @@ Esta pasta traduz a historia funcional de `docs/historia/geral` em decisoes tecn
 | `CHK-DEV-28` | `28-checklist-mapa-clas-propriedades-privadas-claims.md` | `HIST-DEV-26` e `HIST-DEV-27` |
 | `HIST-DEV-29` | `29-atualizacao-claims-propriedades-privadas-ancoras-vendas.md` | Atualização de claims, boletos, âncoras e vendas |
 | `CHK-DEV-30` | `30-checklist-atualizacao-claims-propriedades-privadas.md` | `HIST-DEV-29` |
+| `HIST-DEV-31` | `31-upgrade-limite-chunks-pagamento-claim-ui.md` | Upgrade progressivo, pagamento direto do claim e ajustes visuais |
+| `CHK-DEV-32` | `32-checklist-upgrade-chunks-pagamento-claim-ui.md` | `HIST-DEV-31` |
+| `HIST-DEV-33` | `33-contas-bancarias-por-servidor-multiplas-contas-taxa-abertura.md` | Contas por servidor, múltiplas contas e taxa de abertura |
+| `CHK-DEV-34` | `34-checklist-contas-bancarias-por-servidor-multiplas-contas.md` | `HIST-DEV-33` |
+| `HIST-DEV-35` | `35-compra-chunk-pelo-bloco-claim-mapa-texturizado.md` | Compra de expansão pelo Bloco de Claim e mapa com terreno |
+| `CHK-DEV-36` | `36-checklist-compra-chunk-mapa-texturizado.md` | `HIST-DEV-35` |
 
 ## Principios tecnicos
 
