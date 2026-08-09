@@ -4,6 +4,7 @@ import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.card.CardItemDataService;
 import br.com.economiamod.common.card.CardType;
 import br.com.economiamod.common.invoice.InvoiceItemDataService;
+import br.com.economiamod.common.invoice.ClaimInvoiceItemDataService;
 import br.com.economiamod.common.menu.AtmMenu;
 import br.com.economiamod.common.network.AtmAccountSummaryPayload;
 import br.com.economiamod.common.network.AtmCardsPayload;
@@ -43,6 +44,7 @@ import br.com.economiamod.server.invoice.InvoicePaymentResult;
 import br.com.economiamod.server.invoice.InvoicePaymentResultType;
 import br.com.economiamod.server.invoice.InvoicePaymentService;
 import br.com.economiamod.server.invoice.InvoiceQueryService;
+import br.com.economiamod.server.claim.ClaimInvoiceService;
 import br.com.economiamod.server.operation.EconomyOperationService;
 import br.com.economiamod.server.persistence.EconomyDatabaseState;
 import br.com.economiamod.server.security.PasswordService;
@@ -79,6 +81,8 @@ public final class SecureAccountPayloadHandler {
     private static final CardManagementService CARD_MANAGEMENT_SERVICE = new CardManagementService();
     private static final AccountOperationHistoryService ACCOUNT_HISTORY_SERVICE = new AccountOperationHistoryService();
     private static final InvoiceItemDataService INVOICE_ITEM_DATA_SERVICE = new InvoiceItemDataService();
+    private static final ClaimInvoiceItemDataService CLAIM_INVOICE_ITEM_DATA_SERVICE = new ClaimInvoiceItemDataService();
+    private static final ClaimInvoiceService CLAIM_INVOICE_SERVICE = new ClaimInvoiceService();
     private static final AccountFinancialService ACCOUNT_FINANCIAL_SERVICE = new AccountFinancialService();
     private static final InvoicePaymentService INVOICE_PAYMENT_SERVICE = new InvoicePaymentService();
     private static final InvoiceQueryService INVOICE_QUERY_SERVICE = new InvoiceQueryService();
@@ -365,12 +369,38 @@ public final class SecureAccountPayloadHandler {
         if (session == null || !verifySensitiveActionPassword(player, session, payload.password())) {
             return;
         }
-        if (!invoicePaymentWindowOpen()) {
-            player.sendSystemMessage(Component.translatable("commands.economia.atm.invoice.unavailable"));
-            return;
-        }
         if (!(player.containerMenu instanceof AtmMenu atmMenu)) {
             player.sendSystemMessage(Component.translatable("commands.economia.atm.card_login.open_atm"));
+            return;
+        }
+        var claimInvoice = CLAIM_INVOICE_ITEM_DATA_SERVICE.read(atmMenu.invoiceStack()).orElse(null);
+        if (claimInvoice != null) {
+            var claimInvoiceRecord = CLAIM_INVOICE_SERVICE.invoice(claimInvoice.invoiceId());
+            var result = CLAIM_INVOICE_SERVICE.pay(
+                    player.getUUID(), session.accountId(), claimInvoice.invoiceId());
+            if (result.success()) {
+                atmMenu.clearInvoiceSlot();
+                if (claimInvoiceRecord != null && "SALE".equals(claimInvoiceRecord.invoiceType())) {
+                    for (var transferred : CLAIM_INVOICE_SERVICE.pendingForDebtor(
+                            player.getUUID(), claimInvoiceRecord.territoryId())) {
+                        var stack = CLAIM_INVOICE_ITEM_DATA_SERVICE.create(
+                                transferred.id(), transferred.amount(), transferred.invoiceType());
+                        if (!player.getInventory().add(stack)) {
+                            player.drop(stack, false);
+                        }
+                    }
+                }
+                player.sendSystemMessage(Component.translatable(
+                        "commands.economia.atm.claim_invoice.paid", result.amount()));
+                syncAccountSummary(player, session.accountId());
+            } else {
+                player.sendSystemMessage(Component.translatable(
+                        "commands.economia.atm.claim_invoice." + result.code()));
+            }
+            return;
+        }
+        if (!invoicePaymentWindowOpen()) {
+            player.sendSystemMessage(Component.translatable("commands.economia.atm.invoice.unavailable"));
             return;
         }
         var invoice = INVOICE_ITEM_DATA_SERVICE.read(atmMenu.invoiceStack()).orElse(null);

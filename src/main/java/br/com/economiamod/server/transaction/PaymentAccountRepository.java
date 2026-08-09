@@ -30,7 +30,9 @@ public final class PaymentAccountRepository {
                        credit_interest_outstanding
                   FROM economy_accounts
                  WHERE id = ?
-                   AND account_type IN ('PLAYER', 'SYSTEM_TREASURY')
+                   AND account_type IN (
+                       'PLAYER', 'SYSTEM_TREASURY', 'CLAN_TREASURY', 'CLAN_SUPPORT', 'PRIVATE_PROPERTY'
+                   )
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, accountId);

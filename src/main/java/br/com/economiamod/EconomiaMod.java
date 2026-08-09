@@ -2,6 +2,8 @@ package br.com.economiamod;
 
 import br.com.economiamod.client.ClientMenuScreens;
 import br.com.economiamod.client.ModKeyMappings;
+import br.com.economiamod.client.MapClientEvents;
+import br.com.economiamod.client.ClientBlockEntityRenderers;
 import br.com.economiamod.registry.ModBlocks;
 import br.com.economiamod.registry.ModBlockEntities;
 import br.com.economiamod.registry.ModCreativeTabs;
@@ -11,6 +13,9 @@ import br.com.economiamod.common.network.ModNetwork;
 import br.com.economiamod.server.command.EconomiaCommands;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.event.CommercialBlockEvents;
+import br.com.economiamod.server.event.ClaimProtectionEvents;
+import br.com.economiamod.server.event.ClaimBlockEvents;
+import br.com.economiamod.server.event.GroupProtectedBlockEvents;
 import br.com.economiamod.server.event.EconomyServerEvents;
 import com.mojang.logging.LogUtils;
 import net.neoforged.api.distmarker.Dist;
@@ -37,11 +42,25 @@ public final class EconomiaMod {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.addListener(ClientMenuScreens::registerScreens);
             modEventBus.addListener(ModKeyMappings::register);
+            modEventBus.addListener(ClientBlockEntityRenderers::register);
+            NeoForge.EVENT_BUS.addListener(MapClientEvents::onClientTick);
         }
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerAboutToStart);
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerStopped);
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onPlayerLoggedOut);
+        NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onPlayerLoggedIn);
+        NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerTick);
+        NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerChat);
         NeoForge.EVENT_BUS.addListener(EconomiaCommands::onRegisterCommands);
+        NeoForge.EVENT_BUS.addListener(ClaimBlockEvents::onBlockPlaced);
+        NeoForge.EVENT_BUS.addListener(ClaimBlockEvents::onBlockBroken);
+        NeoForge.EVENT_BUS.addListener(GroupProtectedBlockEvents::onBreak);
+        NeoForge.EVENT_BUS.addListener(GroupProtectedBlockEvents::onUse);
+        NeoForge.EVENT_BUS.addListener(ClaimProtectionEvents::onBlockPlaced);
+        NeoForge.EVENT_BUS.addListener(ClaimProtectionEvents::onBlockBroken);
+        NeoForge.EVENT_BUS.addListener(ClaimProtectionEvents::onBlockInteraction);
+        NeoForge.EVENT_BUS.addListener(ClaimProtectionEvents::onExplosion);
+        NeoForge.EVENT_BUS.addListener(ClaimProtectionEvents::onPistonMove);
         NeoForge.EVENT_BUS.addListener(CommercialBlockEvents::onBlockPlaced);
         NeoForge.EVENT_BUS.addListener(CommercialBlockEvents::onBlockBroken);
 

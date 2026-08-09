@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["TCT", "PRP", "TTT"],
+  "key": { "T": { "tag": "minecraft:planks" }, "C": { "item": "minecraft:copper_ingot" }, "P": { "item": "minecraft:paper" }, "R": { "item": "minecraft:redstone" } },
+  "result": { "id": "economia:private_property_management_block", "count": 1 }
+}

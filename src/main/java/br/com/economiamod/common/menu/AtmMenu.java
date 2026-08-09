@@ -4,6 +4,7 @@ import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.card.CardItemDataService;
 import br.com.economiamod.common.gold.GoldUnitConverter;
 import br.com.economiamod.common.invoice.InvoiceItemDataService;
+import br.com.economiamod.common.invoice.ClaimInvoiceItemDataService;
 import br.com.economiamod.common.network.AtmSessionStatePayload;
 import br.com.economiamod.registry.ModMenus;
 import br.com.economiamod.registry.ModBlocks;
@@ -43,6 +44,7 @@ public final class AtmMenu extends AbstractContainerMenu {
     private final SimpleContainer invoiceContainer = new SimpleContainer(1);
     private final CardItemDataService cardItemDataService = new CardItemDataService();
     private final InvoiceItemDataService invoiceItemDataService = new InvoiceItemDataService();
+    private final ClaimInvoiceItemDataService claimInvoiceItemDataService = new ClaimInvoiceItemDataService();
     private final InvoiceQueryService invoiceQueryService = new InvoiceQueryService();
     private final CardSecurityService cardSecurityService = new CardSecurityService();
     private final GoldDynamicPricingService goldPricingService = new GoldDynamicPricingService();
@@ -133,6 +135,9 @@ public final class AtmMenu extends AbstractContainerMenu {
             }
             InvoiceOpenEntry oldest = summary.openEntries().get(0);
             ItemStack current = invoiceContainer.getItem(0);
+            if (claimInvoiceItemDataService.read(current).isPresent()) {
+                return;
+            }
             var currentInvoice = invoiceItemDataService.read(current).orElse(null);
             if (currentInvoice != null && accountId.equals(currentInvoice.accountId()) && oldest.entryId().equals(currentInvoice.entryId()) && currentInvoice.amount() == oldest.remainingAmount()) {
                 return;

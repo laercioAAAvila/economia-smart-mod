@@ -2,6 +2,7 @@ package br.com.economiamod.registry;
 
 import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.block.CommercialBlockEntity;
+import br.com.economiamod.common.block.GroupChestBlockEntity;
 import java.util.function.Supplier;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -20,6 +21,13 @@ public final class ModBlockEntities {
                     ModBlocks.BUY_SHOP.get(),
                     ModBlocks.BANK_COUNTER.get(),
                     ModBlocks.MAIL.get()
+            ).build(null));
+
+    public static final Supplier<BlockEntityType<GroupChestBlockEntity>> GROUP_CHEST =
+            BLOCK_ENTITY_TYPES.register("group_chest", () -> BlockEntityType.Builder.of(
+                    GroupChestBlockEntity::new,
+                    ModBlocks.CLAN_CHEST.get(),
+                    ModBlocks.PRIVATE_PROPERTY_CHEST.get()
             ).build(null));
 
     private ModBlockEntities() {

@@ -23,8 +23,6 @@ import net.minecraft.world.level.block.state.BlockState;
 
 public final class CommercialMenuOpenService {
     private final CommercialOwnerRepository ownerRepository = new CommercialOwnerRepository();
-    private final CommercialBlockResolver blockResolver = new CommercialBlockResolver();
-    private final CommercialBlockSqlService sqlService = new CommercialBlockSqlService();
     private final CommercialBlockTypeRepository blockTypeRepository = new CommercialBlockTypeRepository();
     private final MailBlockRepository mailBlockRepository = new MailBlockRepository();
 
@@ -55,6 +53,10 @@ public final class CommercialMenuOpenService {
                 player.displayClientMessage(Component.translatable("commands.economia.unavailable"), true);
                 return;
             }
+            if (commercialBlockId == null) {
+                player.displayClientMessage(Component.translatable("block.economia.commercial.registration_missing"), true);
+                return;
+            }
             player.openMenu(new SimpleMenuProvider(
                     (containerId, inventory, ignored) -> new BankCounterMenu(containerId, inventory, pos, commercialBlockId),
                     Component.translatable("screen.economia.bank_counter.title")
@@ -82,15 +84,7 @@ public final class CommercialMenuOpenService {
             return commercialBlockId;
         }
 
-        sqlService.registerPlacedBlock(
-                commercialBlockId,
-                CommercialBlockType.BANK_COUNTER,
-                null,
-                player.getUUID(),
-                level.dimension().location(),
-                pos
-        );
-        return commercialBlockId;
+        return null;
     }
 
     private void openShop(ServerLevel level, BlockPos pos, BlockState state, ServerPlayer player) {
@@ -102,12 +96,13 @@ public final class CommercialMenuOpenService {
         UUID ownerUuid;
         try {
             ownerUuid = ownerRepository.owner(commercialBlockId).orElse(null);
-            if (ownerUuid == null) {
-                ownerUuid = recoverMissingShopRegistration(level, pos, state, player, commercialBlockId);
-            }
         } catch (SQLException exception) {
             EconomiaMod.LOGGER.warn("Falha ao carregar dono da loja.", exception);
             player.displayClientMessage(Component.translatable("commands.economia.unavailable"), true);
+            return;
+        }
+        if (ownerUuid == null) {
+            player.displayClientMessage(Component.translatable("block.economia.commercial.registration_missing"), true);
             return;
         }
         final UUID menuOwnerUuid = ownerUuid;
@@ -127,24 +122,6 @@ public final class CommercialMenuOpenService {
         ));
     }
 
-    private UUID recoverMissingShopRegistration(ServerLevel level, BlockPos pos, BlockState state, ServerPlayer player, UUID commercialBlockId) throws SQLException {
-        CommercialBlockType blockType = blockResolver.typeOf(state).orElse(null);
-        if (blockType != CommercialBlockType.SELL_SHOP && blockType != CommercialBlockType.BUY_SHOP) {
-            return null;
-        }
-
-        UUID ownerUuid = player.getUUID();
-        sqlService.registerPlacedBlock(
-                commercialBlockId,
-                blockType,
-                ownerUuid,
-                ownerUuid,
-                level.dimension().location(),
-                pos
-        );
-        return ownerUuid;
-    }
-
     private void openMail(ServerLevel level, BlockPos pos, ServerPlayer player) {
         if (!(level.getBlockEntity(pos) instanceof CommercialBlockEntity blockEntity)) {
             return;
@@ -154,20 +131,9 @@ public final class CommercialMenuOpenService {
         MailBlockRecord record;
         try {
             record = mailBlockRepository.findActive(commercialBlockId).orElse(null);
-            if (record == null) {
-                sqlService.registerPlacedBlock(
-                        commercialBlockId,
-                        CommercialBlockType.MAIL,
-                        player.getUUID(),
-                        player.getUUID(),
-                        level.dimension().location(),
-                        pos
-                );
-                record = mailBlockRepository.findActive(commercialBlockId).orElse(null);
-            }
         } catch (SQLException exception) {
             EconomiaMod.LOGGER.warn("Falha ao carregar Correio.", exception);
-            player.displayClientMessage(Component.translatable("commands.economia.unavailable"), true);
+            player.displayClientMessage(Component.translatable("block.economia.commercial.registration_missing"), true);
             return;
         }
         if (record == null) {
@@ -196,4 +162,5 @@ public final class CommercialMenuOpenService {
                 Component.translatable("screen.economia.mail.title")
         ), data -> MailMenu.writeOpeningData(data, menuRecord, pos, owner));
     }
+
 }

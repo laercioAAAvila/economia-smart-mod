@@ -2,6 +2,10 @@ package br.com.economiamod.registry;
 
 import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.block.HorizontalCommercialBlock;
+import br.com.economiamod.common.block.ClaimAnchorBlock;
+import br.com.economiamod.common.block.GroupChestBlock;
+import br.com.economiamod.common.block.GroupManagementBlock;
+import br.com.economiamod.common.group.GroupType;
 import java.util.function.Supplier;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -22,12 +26,30 @@ public final class ModBlocks {
     public static final DeferredBlock<Block> BUY_SHOP = registerCommercialBlock("buy_shop", woodBlock(2.5F));
     public static final DeferredBlock<Block> BANK_COUNTER = registerCommercialBlock("bank_counter", metalBlock(4.0F));
     public static final DeferredBlock<Block> MAIL = registerCommercialBlock("mail", woodBlock(2.0F));
+    public static final DeferredBlock<Block> CLAN_CLAIM_BLOCK = BLOCKS.register(
+            "clan_claim_block", () -> new ClaimAnchorBlock(metalBlock(4.0F).get()));
+    public static final DeferredBlock<Block> PRIVATE_PROPERTY_CLAIM_BLOCK = BLOCKS.register(
+            "private_property_claim_block", () -> new ClaimAnchorBlock(metalBlock(3.0F).get()));
+    public static final DeferredBlock<Block> CLAN_CHEST = BLOCKS.register(
+            "clan_chest", () -> new GroupChestBlock(woodBlock(2.5F).get(), GroupType.CLAN));
+    public static final DeferredBlock<Block> PRIVATE_PROPERTY_CHEST = BLOCKS.register(
+            "private_property_chest", () -> new GroupChestBlock(woodBlock(2.5F).get(), GroupType.PRIVATE_PROPERTY));
+    public static final DeferredBlock<Block> CLAN_MANAGEMENT_BLOCK = BLOCKS.register(
+            "clan_management_block", () -> new GroupManagementBlock(woodBlock(3.0F).get(), GroupType.CLAN));
+    public static final DeferredBlock<Block> PRIVATE_PROPERTY_MANAGEMENT_BLOCK = BLOCKS.register(
+            "private_property_management_block", () -> new GroupManagementBlock(woodBlock(3.0F).get(), GroupType.PRIVATE_PROPERTY));
 
     public static final DeferredItem<BlockItem> ATM_ITEM = registerBlockItem("atm", ATM);
     public static final DeferredItem<BlockItem> SELL_SHOP_ITEM = registerBlockItem("sell_shop", SELL_SHOP);
     public static final DeferredItem<BlockItem> BUY_SHOP_ITEM = registerBlockItem("buy_shop", BUY_SHOP);
     public static final DeferredItem<BlockItem> BANK_COUNTER_ITEM = registerBlockItem("bank_counter", BANK_COUNTER);
     public static final DeferredItem<BlockItem> MAIL_ITEM = registerBlockItem("mail", MAIL);
+    public static final DeferredItem<BlockItem> CLAN_CLAIM_BLOCK_ITEM = registerBlockItem("clan_claim_block", CLAN_CLAIM_BLOCK);
+    public static final DeferredItem<BlockItem> PRIVATE_PROPERTY_CLAIM_BLOCK_ITEM = registerBlockItem("private_property_claim_block", PRIVATE_PROPERTY_CLAIM_BLOCK);
+    public static final DeferredItem<BlockItem> CLAN_CHEST_ITEM = registerBlockItem("clan_chest", CLAN_CHEST);
+    public static final DeferredItem<BlockItem> PRIVATE_PROPERTY_CHEST_ITEM = registerBlockItem("private_property_chest", PRIVATE_PROPERTY_CHEST);
+    public static final DeferredItem<BlockItem> CLAN_MANAGEMENT_BLOCK_ITEM = registerBlockItem("clan_management_block", CLAN_MANAGEMENT_BLOCK);
+    public static final DeferredItem<BlockItem> PRIVATE_PROPERTY_MANAGEMENT_BLOCK_ITEM = registerBlockItem("private_property_management_block", PRIVATE_PROPERTY_MANAGEMENT_BLOCK);
 
     private ModBlocks() {
     }

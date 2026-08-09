@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["TIT", "PRP", "TTT"],
+  "key": { "T": { "tag": "minecraft:planks" }, "I": { "item": "minecraft:iron_ingot" }, "P": { "item": "minecraft:paper" }, "R": { "item": "minecraft:redstone" } },
+  "result": { "id": "economia:clan_management_block", "count": 1 }
+}

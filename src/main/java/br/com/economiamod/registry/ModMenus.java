@@ -6,6 +6,8 @@ import br.com.economiamod.common.menu.BankCounterMenu;
 import br.com.economiamod.common.menu.BuyShopMenu;
 import br.com.economiamod.common.menu.MailMenu;
 import br.com.economiamod.common.menu.SellShopMenu;
+import br.com.economiamod.common.menu.GroupManagementMenu;
+import br.com.economiamod.common.menu.ClaimAnchorMenu;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.bus.api.IEventBus;
@@ -26,6 +28,10 @@ public final class ModMenus {
             MENUS.register("buy_shop", () -> IMenuTypeExtension.create(BuyShopMenu::new));
     public static final DeferredHolder<MenuType<?>, MenuType<MailMenu>> MAIL =
             MENUS.register("mail", () -> IMenuTypeExtension.create(MailMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<GroupManagementMenu>> GROUP_MANAGEMENT =
+            MENUS.register("group_management", () -> IMenuTypeExtension.create(GroupManagementMenu::new));
+    public static final DeferredHolder<MenuType<?>, MenuType<ClaimAnchorMenu>> CLAIM_ANCHOR =
+            MENUS.register("claim_anchor", () -> IMenuTypeExtension.create(ClaimAnchorMenu::new));
 
     private ModMenus() {
     }

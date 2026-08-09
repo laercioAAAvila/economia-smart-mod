@@ -47,6 +47,42 @@ public final class EconomyServerConfig {
     public static final ModConfigSpec.IntValue DYNAMIC_PRICING_DEFAULT_SUPPLY_DECREASE_BPS;
     public static final ModConfigSpec.IntValue DYNAMIC_PRICING_DEFAULT_RECOVERY_LEVELS_PER_IDLE_DAY;
 
+    public static final ModConfigSpec.IntValue CLAN_MEMBER_LIMIT;
+    public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_MEMBER_LIMIT;
+    public static final ModConfigSpec.IntValue CLAN_INITIAL_CLAIM_LIMIT;
+    public static final ModConfigSpec.IntValue CLAN_MAX_CLAIM_LIMIT;
+    public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_INITIAL_CLAIM_LIMIT;
+    public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_MAX_CLAIM_LIMIT;
+    public static final ModConfigSpec.IntValue CLAIM_EXTERNAL_DISTANCE;
+    public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_CLAIM_DISTANCE;
+    public static final ModConfigSpec.IntValue CLAN_LEADERSHIP_INACTIVITY_DAYS;
+    public static final ModConfigSpec.IntValue CLAN_LEADERSHIP_CANDIDATE_ACTIVE_DAYS;
+    public static final ModConfigSpec.IntValue CLAN_MAX_TERRITORIES;
+    public static final ModConfigSpec.IntValue PRIVATE_PROPERTY_MAX_TERRITORIES;
+    public static final ModConfigSpec.IntValue GROUP_NAME_MIN_LENGTH;
+    public static final ModConfigSpec.IntValue GROUP_NAME_MAX_LENGTH;
+    public static final ModConfigSpec.IntValue LOCATION_NAME_MAX_LENGTH;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_OVERWORLD_BASE;
+    public static final ModConfigSpec.IntValue CLAIM_PRICE_OVERWORLD_INTERVAL;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_OVERWORLD_LINEAR;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_OVERWORLD_PROGRESSIVE;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_NETHER_BASE;
+    public static final ModConfigSpec.IntValue CLAIM_PRICE_NETHER_INTERVAL;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_NETHER_LINEAR;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_NETHER_PROGRESSIVE;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_END_BASE;
+    public static final ModConfigSpec.IntValue CLAIM_PRICE_END_INTERVAL;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_END_LINEAR;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_END_PROGRESSIVE;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_OTHER_BASE;
+    public static final ModConfigSpec.IntValue CLAIM_PRICE_OTHER_INTERVAL;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_OTHER_LINEAR;
+    public static final ModConfigSpec.LongValue CLAIM_PRICE_OTHER_PROGRESSIVE;
+    public static final ModConfigSpec.LongValue ANCHOR_BASE_PRICE;
+    public static final ModConfigSpec.IntValue ANCHOR_LAND_PERCENTAGE;
+    public static final ModConfigSpec.IntValue ANCHOR_DEFAULT_MINECRAFT_DAYS;
+    public static final ModConfigSpec.IntValue ANCHOR_MAX_MINECRAFT_DAYS;
+
     public static final ModConfigSpec SPEC;
 
     static {
@@ -111,6 +147,64 @@ public final class EconomyServerConfig {
         DYNAMIC_PRICING_DEFAULT_SUPPLY_DECREASE_BPS = BUILDER.defineInRange("defaultSupplyDecreaseBps", 500, 0, 10000);
         DYNAMIC_PRICING_DEFAULT_RECOVERY_LEVELS_PER_IDLE_DAY = BUILDER.defineInRange("defaultRecoveryLevelsPerIdleDay", 1, 0, 1000);
         BUILDER.pop();
+        BUILDER.pop();
+
+        BUILDER.push("groups");
+        GROUP_NAME_MIN_LENGTH = BUILDER.defineInRange("nameMinLength", 3, 1, 64);
+        GROUP_NAME_MAX_LENGTH = BUILDER.defineInRange("nameMaxLength", 32, 1, 64);
+        LOCATION_NAME_MAX_LENGTH = BUILDER.defineInRange("locationNameMaxLength", 64, 1, 64);
+        BUILDER.push("clan");
+        CLAN_MEMBER_LIMIT = BUILDER.defineInRange("memberLimit", 20, 1, 1000);
+        CLAN_INITIAL_CLAIM_LIMIT = BUILDER.defineInRange("initialClaimLimit", 4, 1, 100000);
+        CLAN_MAX_CLAIM_LIMIT = BUILDER.defineInRange("maxClaimLimit", 16, 1, 100000);
+        CLAN_MAX_TERRITORIES = BUILDER.defineInRange("maxTerritories", 3, 1, Integer.MAX_VALUE);
+        CLAN_LEADERSHIP_INACTIVITY_DAYS = BUILDER.defineInRange("leadershipInactivityDays", 20, 1, 3650);
+        CLAN_LEADERSHIP_CANDIDATE_ACTIVE_DAYS = BUILDER.defineInRange("leadershipCandidateActiveDays", 3, 1, 3650);
+        BUILDER.pop();
+        BUILDER.push("privateProperty");
+        PRIVATE_PROPERTY_MEMBER_LIMIT = BUILDER.defineInRange("memberLimit", 5, 1, 1000);
+        PRIVATE_PROPERTY_INITIAL_CLAIM_LIMIT = BUILDER.defineInRange("initialClaimLimit", 1, 1, 100000);
+        PRIVATE_PROPERTY_MAX_CLAIM_LIMIT = BUILDER.defineInRange("maxClaimLimit", 8, 1, 100000);
+        PRIVATE_PROPERTY_MAX_TERRITORIES = BUILDER.defineInRange("maxTerritories", 3, 1, Integer.MAX_VALUE);
+        PRIVATE_PROPERTY_CLAIM_DISTANCE = BUILDER.defineInRange("separateTerritoryDistance", 1, 0, 1000);
+        BUILDER.pop();
+        BUILDER.push("claims");
+        CLAIM_EXTERNAL_DISTANCE = BUILDER.defineInRange("externalDistance", 3, 0, 1000);
+        BUILDER.pop();
+        BUILDER.pop();
+
+        BUILDER.push("claimPrice");
+        BUILDER.push("overworld");
+        CLAIM_PRICE_OVERWORLD_BASE = BUILDER.defineInRange("base", 5_000L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_OVERWORLD_INTERVAL = BUILDER.defineInRange("interval", 1_000, 1, Integer.MAX_VALUE);
+        CLAIM_PRICE_OVERWORLD_LINEAR = BUILDER.defineInRange("linearIncrease", 500L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_OVERWORLD_PROGRESSIVE = BUILDER.defineInRange("progressiveIncrease", 20L, 0L, Long.MAX_VALUE);
+        BUILDER.pop();
+        BUILDER.push("nether");
+        CLAIM_PRICE_NETHER_BASE = BUILDER.defineInRange("base", 10_000L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_NETHER_INTERVAL = BUILDER.defineInRange("interval", 500, 1, Integer.MAX_VALUE);
+        CLAIM_PRICE_NETHER_LINEAR = BUILDER.defineInRange("linearIncrease", 800L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_NETHER_PROGRESSIVE = BUILDER.defineInRange("progressiveIncrease", 30L, 0L, Long.MAX_VALUE);
+        BUILDER.pop();
+        BUILDER.push("end");
+        CLAIM_PRICE_END_BASE = BUILDER.defineInRange("base", 15_000L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_END_INTERVAL = BUILDER.defineInRange("interval", 1_000, 1, Integer.MAX_VALUE);
+        CLAIM_PRICE_END_LINEAR = BUILDER.defineInRange("linearIncrease", 1_000L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_END_PROGRESSIVE = BUILDER.defineInRange("progressiveIncrease", 35L, 0L, Long.MAX_VALUE);
+        BUILDER.pop();
+        BUILDER.push("otherDimensions");
+        CLAIM_PRICE_OTHER_BASE = BUILDER.defineInRange("base", 10_000L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_OTHER_INTERVAL = BUILDER.defineInRange("interval", 1_000, 1, Integer.MAX_VALUE);
+        CLAIM_PRICE_OTHER_LINEAR = BUILDER.defineInRange("linearIncrease", 750L, 0L, Long.MAX_VALUE);
+        CLAIM_PRICE_OTHER_PROGRESSIVE = BUILDER.defineInRange("progressiveIncrease", 25L, 0L, Long.MAX_VALUE);
+        BUILDER.pop();
+        BUILDER.pop();
+
+        BUILDER.push("claimAnchor");
+        ANCHOR_BASE_PRICE = BUILDER.defineInRange("basePrice", 1_000L, 0L, Long.MAX_VALUE);
+        ANCHOR_LAND_PERCENTAGE = BUILDER.defineInRange("landPercentage", 50, 0, 10_000);
+        ANCHOR_DEFAULT_MINECRAFT_DAYS = BUILDER.defineInRange("defaultMinecraftDays", 25, 1, Integer.MAX_VALUE);
+        ANCHOR_MAX_MINECRAFT_DAYS = BUILDER.defineInRange("maxMinecraftDays", 1_000, 1, Integer.MAX_VALUE);
         BUILDER.pop();
 
         SPEC = BUILDER.build();

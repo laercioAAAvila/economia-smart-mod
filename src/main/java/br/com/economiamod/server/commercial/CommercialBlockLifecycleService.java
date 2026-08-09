@@ -5,6 +5,7 @@ import br.com.economiamod.common.block.CommercialBlockEntity;
 import br.com.economiamod.common.block.CommercialBlockType;
 import br.com.economiamod.registry.ModBlocks;
 import br.com.economiamod.server.persistence.EconomyDatabaseState;
+import br.com.economiamod.server.claim.ClaimPermissionService;
 import java.sql.SQLException;
 import java.util.UUID;
 import net.minecraft.network.chat.Component;
@@ -17,6 +18,7 @@ public final class CommercialBlockLifecycleService {
     private final CommercialBlockResolver blockResolver = new CommercialBlockResolver();
     private final CommercialBlockSqlService sqlService = new CommercialBlockSqlService();
     private final CommercialBlockDropService dropService = new CommercialBlockDropService();
+    private final ClaimPermissionService claimPermissionService = new ClaimPermissionService();
 
     public void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (!isCommercialBlock(event.getPlacedBlock())) {
@@ -92,10 +94,22 @@ public final class CommercialBlockLifecycleService {
                 || blockType == CommercialBlockType.SELL_SHOP
                 || blockType == CommercialBlockType.BUY_SHOP
                 || blockType == CommercialBlockType.MAIL) {
-            return playerPlaced(event);
+            return playerPlaced(event) || groupLeadershipOverride(event);
         }
 
         return false;
+    }
+
+    private boolean groupLeadershipOverride(BlockEvent.BreakEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return false;
+        }
+        try {
+            return claimPermissionService.canOverrideOwnerProtection(event.getPlayer().getUUID(), level, event.getPos());
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao verificar liderança territorial.", exception);
+            return false;
+        }
     }
 
     private boolean playerPlaced(BlockEvent.BreakEvent event) {

@@ -293,7 +293,7 @@ public final class AccountService {
                 }
 
                 long debt = br.com.economiamod.common.credit.CreditMath.debtTotal(account.principalOutstanding(), account.interestOutstanding());
-                if (debt > 0L) {
+                if (debt > 0L || hasLandDebt(connection, accountId)) {
                     connection.rollback();
                     return AccountCreditLimitResultType.DEBT_PRESENT;
                 }
@@ -413,6 +413,21 @@ public final class AccountService {
             statement.setLong(1, limit);
             statement.setObject(2, accountId);
             statement.executeUpdate();
+        }
+    }
+
+    private boolean hasLandDebt(Connection connection, UUID accountId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT 1
+                  FROM economy_accounts a
+                  JOIN economy_claim_invoices i ON i.debtor_player_uuid = a.player_uuid
+                 WHERE a.id = ? AND i.invoice_type = 'LAND' AND i.status = 'PENDING'
+                 LIMIT 1
+                """)) {
+            statement.setObject(1, accountId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
         }
     }
 

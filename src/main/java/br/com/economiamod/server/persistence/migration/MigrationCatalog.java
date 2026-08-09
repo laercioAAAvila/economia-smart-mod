@@ -23,7 +23,9 @@ public final class MigrationCatalog {
             migration(16, "add_operation_recovery_index"),
             migration(17, "add_debit_daily_limits"),
             migration(18, "add_card_creation_numbers"),
-            migration(19, "add_mail_blocks")
+            migration(19, "add_mail_blocks"),
+            migration(20, "create_groups_claims_and_locations"),
+            migration(21, "add_claim_territories_invoices_and_anchors")
     );
 
     private MigrationCatalog() {

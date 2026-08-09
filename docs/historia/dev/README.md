@@ -36,6 +36,12 @@ Esta pasta traduz a historia funcional de `docs/historia/geral` em decisoes tecn
 | `CHK-DEV-22` | `22-checklist-ui-atm-concorrencia-dinheiro.md` | `HIST-GERAL-02`, `HIST-GERAL-03`, `HIST-GERAL-04`, `HIST-GERAL-08` |
 | `CHK-DEV-23` | `23-checklist-cartoes-tooltip-lojas-feedback.md` | `HIST-GERAL-03`, `HIST-GERAL-05` |
 | `CHK-DEV-24` | `24-checklist-botoes-lojas-feedback.md` | `HIST-GERAL-05` |
+| `CHK-DEV-25` | `25-checklist-correio.md` | Correio, pagamento e permissões comerciais |
+| `HIST-DEV-26` | `26-especificacao-funcional-completa-mapa-clas-propriedades-privadas-claims.md` | Especificação funcional recebida |
+| `HIST-DEV-27` | `27-arquitetura-mapa-clas-propriedades-privadas-claims.md` | Arquitetura de mapa, grupos, claims e permissões |
+| `CHK-DEV-28` | `28-checklist-mapa-clas-propriedades-privadas-claims.md` | `HIST-DEV-26` e `HIST-DEV-27` |
+| `HIST-DEV-29` | `29-atualizacao-claims-propriedades-privadas-ancoras-vendas.md` | Atualização de claims, boletos, âncoras e vendas |
+| `CHK-DEV-30` | `30-checklist-atualizacao-claims-propriedades-privadas.md` | `HIST-DEV-29` |
 
 ## Principios tecnicos
 

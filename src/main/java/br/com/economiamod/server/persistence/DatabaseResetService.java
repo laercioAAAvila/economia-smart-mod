@@ -35,6 +35,17 @@ public final class DatabaseResetService {
              Statement statement = connection.createStatement()) {
             statement.execute("""
                     DROP TABLE IF EXISTS
+                        economy_player_locations,
+                        economy_claim_invoices,
+                        economy_private_property_members,
+                        economy_claims,
+                        economy_claim_territories,
+                        economy_claim_anchors,
+                        economy_group_invites,
+                        economy_group_members,
+                        economy_groups,
+                        economy_server_clock,
+                        economy_mail_recipients,
                         economy_operations,
                         economy_audit_logs,
                         economy_daily_job_runs,

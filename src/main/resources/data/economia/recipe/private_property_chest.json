@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["TCT", "TPT", "TTT"],
+  "key": { "T": { "tag": "minecraft:planks" }, "C": { "item": "minecraft:copper_ingot" }, "P": { "item": "minecraft:paper" } },
+  "result": { "id": "economia:private_property_chest", "count": 1 }
+}

@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["TIT", "TPT", "TTT"],
+  "key": { "T": { "tag": "minecraft:planks" }, "I": { "item": "minecraft:iron_ingot" }, "P": { "item": "minecraft:paper" } },
+  "result": { "id": "economia:clan_chest", "count": 1 }
+}

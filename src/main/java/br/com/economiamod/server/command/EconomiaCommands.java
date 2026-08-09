@@ -4,6 +4,11 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import br.com.economiamod.server.location.PlayerLocationRepository;
+import br.com.economiamod.server.location.PlayerLocation;
+import br.com.economiamod.common.network.OpenSharedLocationPayload;
+import java.util.UUID;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class EconomiaCommands {
     private static final AdminCommandHandlers ADMIN_COMMANDS = new AdminCommandHandlers();
@@ -13,6 +18,11 @@ public final class EconomiaCommands {
 
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal("economia")
+                .then(Commands.literal("_localizacao")
+                        .then(Commands.argument("id", StringArgumentType.word())
+                                .executes(context -> openSharedLocation(
+                                        context.getSource().getPlayerOrException(),
+                                        StringArgumentType.getString(context, "id")))))
                 .then(Commands.literal("admin")
                         .requires(source -> source.hasPermission(2))
                         .then(Commands.literal("conta")
@@ -51,5 +61,17 @@ public final class EconomiaCommands {
                                                 .executes(context -> ADMIN_COMMANDS.resetDatabase(context.getSource())))))
                         .then(Commands.literal("reload")
                                 .executes(context -> ADMIN_COMMANDS.unavailable(context.getSource())))));
+    }
+
+    private static int openSharedLocation(net.minecraft.server.level.ServerPlayer player, String rawId) {
+        try {
+            PlayerLocation location = new PlayerLocationRepository().find(UUID.fromString(rawId)).orElse(null);
+            if (location == null) return 0;
+            PacketDistributor.sendToPlayer(player, new OpenSharedLocationPayload(
+                    location.name(), location.dimension(), location.x(), location.y(), location.z()));
+            return 1;
+        } catch (Exception exception) {
+            return 0;
+        }
     }
 }

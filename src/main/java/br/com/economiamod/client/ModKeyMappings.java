@@ -17,10 +17,18 @@ public final class ModKeyMappings {
             CATEGORY
     );
 
+    public static final KeyMapping OPEN_MAP = new KeyMapping(
+            "key.economia.open_map", KeyConflictContext.IN_GAME, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_M, CATEGORY);
+
+    public static final KeyMapping CREATE_LOCATION = new KeyMapping(
+            "key.economia.create_location", KeyConflictContext.GUI, InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_P, CATEGORY);
+
     private ModKeyMappings() {
     }
 
     public static void register(RegisterKeyMappingsEvent event) {
         event.register(SHOP_REFERENCE_FROM_JEI);
+        event.register(OPEN_MAP);
+        event.register(CREATE_LOCATION);
     }
 }

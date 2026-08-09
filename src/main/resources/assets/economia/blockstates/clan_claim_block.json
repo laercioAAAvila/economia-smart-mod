@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "economia:block/clan_claim_block" }
+  }
+}

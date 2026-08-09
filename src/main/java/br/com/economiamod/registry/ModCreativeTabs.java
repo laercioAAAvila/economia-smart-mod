@@ -34,6 +34,12 @@ public final class ModCreativeTabs {
                 output.accept(ModBlocks.BUY_SHOP_ITEM.get());
                 output.accept(ModBlocks.BANK_COUNTER_ITEM.get());
                 output.accept(ModBlocks.MAIL_ITEM.get());
+                output.accept(ModBlocks.CLAN_CLAIM_BLOCK_ITEM.get());
+                output.accept(ModBlocks.PRIVATE_PROPERTY_CLAIM_BLOCK_ITEM.get());
+                output.accept(ModBlocks.CLAN_CHEST_ITEM.get());
+                output.accept(ModBlocks.PRIVATE_PROPERTY_CHEST_ITEM.get());
+                output.accept(ModBlocks.CLAN_MANAGEMENT_BLOCK_ITEM.get());
+                output.accept(ModBlocks.PRIVATE_PROPERTY_MANAGEMENT_BLOCK_ITEM.get());
             })
             .build());
 
@@ -52,6 +58,12 @@ public final class ModCreativeTabs {
             event.accept(ModBlocks.BUY_SHOP_ITEM.get());
             event.accept(ModBlocks.BANK_COUNTER_ITEM.get());
             event.accept(ModBlocks.MAIL_ITEM.get());
+            event.accept(ModBlocks.CLAN_CLAIM_BLOCK_ITEM.get());
+            event.accept(ModBlocks.PRIVATE_PROPERTY_CLAIM_BLOCK_ITEM.get());
+            event.accept(ModBlocks.CLAN_CHEST_ITEM.get());
+            event.accept(ModBlocks.PRIVATE_PROPERTY_CHEST_ITEM.get());
+            event.accept(ModBlocks.CLAN_MANAGEMENT_BLOCK_ITEM.get());
+            event.accept(ModBlocks.PRIVATE_PROPERTY_MANAGEMENT_BLOCK_ITEM.get());
         }
 
         if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
