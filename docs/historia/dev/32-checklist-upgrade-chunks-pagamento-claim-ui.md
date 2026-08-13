@@ -65,6 +65,7 @@ Referência: `HIST-DEV-31`.
 - [x] Não renderizar o item autenticador na tela autenticada.
 - [x] Manter o cartão protegido no servidor até o fechamento.
 - [x] Devolver o cartão em `Sair`, `ESC` ou invalidação do menu.
+- [x] Exigir nova autenticação em cada abertura do Bloco de Claim.
 - [x] Revisar as telas de Clã e Propriedade Privada mostradas nas referências visuais.
 
 ## Texturas e recursos

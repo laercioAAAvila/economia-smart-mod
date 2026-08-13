@@ -8,9 +8,10 @@ O SQL e a fonte oficial para qualquer dado financeiro ou comercial persistente. 
 
 Usar migracoes versionadas e aplicadas na inicializacao do servidor antes de liberar o sistema economico.
 
-Sequencia inicial sugerida:
+Catálogo atual:
 
 ```text
+V000__create_schema_migrations.sql
 V001__create_accounts.sql
 V002__create_cards.sql
 V003__create_transactions_and_ledger.sql
@@ -29,13 +30,30 @@ V015__align_account_number_sequence.sql
 V016__add_operation_recovery_index.sql
 V017__add_debit_daily_limits.sql
 V018__add_card_creation_numbers.sql
+V019__add_mail_blocks.sql
+V020__create_groups_claims_and_locations.sql
+V021__add_claim_territories_invoices_and_anchors.sql
+V022__add_claim_payments_and_upgrades.sql
+V023__add_minecraft_player_name.sql
+V024__scope_player_accounts_by_server.sql
+V025__private_property_permissions.sql
+V026__claim_invoice_bundle_cleanup.sql
+V027__scope_world_data_by_server.sql
+V028__scope_commercial_blocks_by_server.sql
 ```
+
+Uma migração aplicada é imutável. Correções posteriores devem receber uma nova versão;
+o checksum de uma versão já publicada não pode ser alterado. Atualmente a migração 25
+mantém seu checksum original e o ajuste de exclusão em cascata dos itens de boletos
+consolidados pertence à migração 26.
 
 Se uma migracao falhar:
 
 - Sistema bancario fica desativado.
 - Nenhuma operacao financeira e liberada.
-- O erro e registrado sem expor senha ou dados sensiveis.
+- O erro registra etapa da inicialização, destino seguro, tipo da falha, SQLState e
+  código SQL quando disponíveis.
+- Senha do banco, senha de conta, hash, salt e dados sensíveis do cartão nunca são registrados.
 
 ## Tipos monetarios
 
@@ -71,6 +89,8 @@ Campos obrigatorios:
 
 - `id`
 - `player_uuid`
+- `minecraft_player_name`
+- `server_uuid`
 - `username`
 - `username_normalized`
 - `password_hash`
@@ -85,6 +105,8 @@ Campos obrigatorios:
 - `created_at`
 - `updated_at`
 - `last_login_at`
+- `opening_fee`
+- `opening_request_id`
 - `version`
 
 Contas do sistema iniciais:
@@ -99,8 +121,18 @@ Restricoes:
 - Limite nunca negativo.
 - Principal nunca negativo.
 - Juros nunca negativos.
-- Jogador possui no maximo uma conta.
-- Nome normalizado e unico para contas de jogador.
+- Cada jogador pode possuir até `bank.accounts.maxAccountsPerPlayer` contas por servidor;
+  o padrão atual é `3`.
+- A abertura custa `bank.accounts.openingFee`, com padrão de `R$ 1.000`.
+- Nome normalizado é único dentro do UUID do servidor para contas não encerradas.
+- O mesmo UUID do jogador pode possuir contas independentes em servidores diferentes,
+  mesmo quando os servidores compartilham o banco de dados.
+- Cada save possui um UUID econômico próprio persistido em `economia_server_identity`.
+  Apagar e recriar o mundo gera outra identidade, mesmo usando a mesma instalação e o
+  mesmo PostgreSQL.
+- Grupos, membros, convites, claims, âncoras, territórios e localizações são filtrados
+  pelo UUID do save; registros legados sem escopo não são adotados automaticamente.
+- A solicitação de abertura possui chave única para evitar cobrança e criação duplicadas.
 
 ### Cartoes
 

@@ -1,5 +1,6 @@
 package br.com.economiamod.server.commercial;
 
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -10,10 +11,13 @@ import java.util.UUID;
 
 public final class CommercialOwnerRepository {
     public Optional<UUID> owner(UUID commercialBlockId) throws SQLException {
-        String sql = "SELECT COALESCE(owner_player_uuid, placed_by_player_uuid) AS owner_uuid FROM economy_commercial_blocks WHERE id = ? AND status = 'ACTIVE'";
+        String sql = "SELECT COALESCE(owner_player_uuid, placed_by_player_uuid) AS owner_uuid"
+                + " FROM economy_commercial_blocks WHERE id = ? AND (server_uuid = ? OR server_uuid IS NULL)"
+                + " AND status = 'ACTIVE'";
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, commercialBlockId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -24,10 +28,12 @@ public final class CommercialOwnerRepository {
     }
 
     public Optional<UUID> placedBy(UUID commercialBlockId) throws SQLException {
-        String sql = "SELECT placed_by_player_uuid FROM economy_commercial_blocks WHERE id = ? AND status = 'ACTIVE'";
+        String sql = "SELECT placed_by_player_uuid FROM economy_commercial_blocks"
+                + " WHERE id = ? AND (server_uuid = ? OR server_uuid IS NULL) AND status = 'ACTIVE'";
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, commercialBlockId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();

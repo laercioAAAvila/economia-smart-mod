@@ -4,6 +4,7 @@ import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.GroupType;
 import br.com.economiamod.server.account.AccountQueryService;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.account.SystemAccountIds;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.group.GroupRepository;
@@ -45,8 +46,108 @@ public final class ClaimInvoiceService {
         if (remainingDays + pendingDays + days > EconomyServerConfig.ANCHOR_MAX_MINECRAFT_DAYS.get()) {
             return ClaimInvoiceResult.denied("anchor_day_limit");
         }
-        long amount = priceService.anchorPrice(territory.landPrice());
+        long amount = priceService.anchorPrice(territory.landPrice(), territory.claimType());
         return insertInvoice(territoryId, "ANCHOR", actorUuid, actorUuid, null, null, null, amount, days);
+    }
+
+    public ClaimTaxSummary taxSummary(UUID controllerUuid, UUID territoryId) throws SQLException {
+        ClaimInvoiceRecord territory = territory(territoryId);
+        if (territory == null || !controls(controllerUuid, territory)) {
+            return ClaimTaxSummary.empty();
+        }
+        long current = priceService.anchorPrice(territory.landPrice(), territory.claimType());
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT COUNT(*) invoice_count, COALESCE(SUM(amount), 0) total_amount,
+                            COUNT(*) FILTER (WHERE invoice_type = 'ANCHOR') anchor_count
+                       FROM economy_claim_invoices
+                      WHERE territory_id = ? AND invoice_type IN ('LAND', 'ANCHOR') AND status = 'PENDING'
+                     """)) {
+            statement.setObject(1, territoryId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                resultSet.next();
+                boolean currentPending = resultSet.getInt("anchor_count") > 0;
+                return new ClaimTaxSummary(current,
+                        safeAdd(resultSet.getLong("total_amount"), currentPending ? 0L : current),
+                        resultSet.getInt("invoice_count") + (currentPending ? 0 : 1));
+            }
+        }
+    }
+
+    public ClaimInvoiceResult currentTaxInvoice(UUID actorUuid, UUID territoryId) throws SQLException {
+        ClaimInvoiceRecord territory = territory(territoryId);
+        if (territory == null || !controls(actorUuid, territory)) {
+            return ClaimInvoiceResult.denied("owner_required");
+        }
+        List<ClaimInvoiceRecord> pending = pendingForDebtor(actorUuid, territoryId);
+        for (ClaimInvoiceRecord invoice : pending) {
+            if ("ANCHOR".equals(invoice.invoiceType())) {
+                return ClaimInvoiceResult.success(invoice.id(), invoice.amount());
+            }
+        }
+        return generateAnchorInvoice(actorUuid, territoryId,
+                EconomyServerConfig.ANCHOR_DEFAULT_MINECRAFT_DAYS.get());
+    }
+
+    public ClaimInvoiceResult allTaxesInvoice(UUID actorUuid, UUID territoryId) throws SQLException {
+        ClaimInvoiceRecord territory = territory(territoryId);
+        if (territory == null || !controls(actorUuid, territory)) {
+            return ClaimInvoiceResult.denied("owner_required");
+        }
+        ClaimInvoiceRecord existingBundle = pendingBundle(actorUuid, territoryId);
+        if (existingBundle != null) {
+            return ClaimInvoiceResult.success(existingBundle.id(), existingBundle.amount());
+        }
+        List<ClaimInvoiceRecord> pending = pendingForDebtor(actorUuid, territoryId);
+        if (pending.isEmpty()) {
+            ClaimInvoiceResult current = currentTaxInvoice(actorUuid, territoryId);
+            if (!current.success()) {
+                return current;
+            }
+            pending = pendingForDebtor(actorUuid, territoryId);
+        }
+        long total = 0L;
+        for (ClaimInvoiceRecord invoice : pending) {
+            total = safeAdd(total, invoice.amount());
+        }
+        UUID mergedId = UUID.randomUUID();
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO economy_claim_invoices(
+                            id, territory_id, invoice_type, debtor_player_uuid, issuer_player_uuid,
+                            amount, minecraft_days, status, created_at
+                        ) VALUES (?, ?, 'BUNDLE', ?, ?, ?, 0, 'PENDING', CURRENT_TIMESTAMP)
+                        """)) {
+                    insert.setObject(1, mergedId);
+                    insert.setObject(2, territoryId);
+                    insert.setObject(3, actorUuid);
+                    insert.setObject(4, actorUuid);
+                    insert.setLong(5, total);
+                    insert.executeUpdate();
+                }
+                try (PreparedStatement item = connection.prepareStatement("""
+                        INSERT INTO economy_claim_invoice_bundle_items(bundle_invoice_id, child_invoice_id)
+                        VALUES (?, ?)
+                        """)) {
+                    for (ClaimInvoiceRecord invoice : pending) {
+                        item.setObject(1, mergedId);
+                        item.setObject(2, invoice.id());
+                        item.addBatch();
+                    }
+                    item.executeBatch();
+                }
+                connection.commit();
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(autoCommit);
+            }
+        }
+        return ClaimInvoiceResult.success(mergedId, total);
     }
 
     public ClaimInvoiceResult generateSaleInvoice(UUID sellerUuid, UUID territoryId, UUID buyerUuid,
@@ -87,6 +188,9 @@ public final class ClaimInvoiceService {
         if (invoice == null || !"PENDING".equals(invoice.status()) || !payerUuid.equals(invoice.debtorPlayerUuid())) {
             return ClaimInvoiceResult.denied("invoice_invalid");
         }
+        if (!"BUNDLE".equals(invoice.invoiceType()) && childHasPendingBundle(invoice.id())) {
+            return ClaimInvoiceResult.denied("invoice_invalid");
+        }
         if ("SALE".equals(invoice.invoiceType())) {
             int limit = invoice.claimType() == GroupType.CLAN
                     ? EconomyServerConfig.CLAN_MAX_TERRITORIES.get()
@@ -94,6 +198,9 @@ public final class ClaimInvoiceService {
             if (territoryCount(invoice.claimType(), invoice.buyerGroupId(), payerUuid) >= limit) {
                 return ClaimInvoiceResult.denied("buyer_territory_limit");
             }
+        }
+        if ("BUNDLE".equals(invoice.invoiceType()) && !bundleIsPayable(invoice.id())) {
+            return ClaimInvoiceResult.denied("invoice_invalid");
         }
         UUID destination = "SALE".equals(invoice.invoiceType()) ? invoice.sellerAccountId() : SystemAccountIds.TREASURY;
         if (invoice.amount() > 0L) {
@@ -138,7 +245,7 @@ public final class ClaimInvoiceService {
             return 0L;
         }
         long anchor = territory.anchorPaidUntilMillis() > ServerActiveClockService.INSTANCE.currentMillis()
-                ? priceService.anchorPrice(territory.landPrice()) : 0L;
+                ? priceService.anchorPrice(territory.landPrice(), territory.claimType()) : 0L;
         return safeAdd(territory.landPrice(), anchor);
     }
 
@@ -171,25 +278,21 @@ public final class ClaimInvoiceService {
         return invoices;
     }
 
-    public List<ClaimInvoiceRecord> reissuePending(UUID controllerUuid, UUID territoryId) throws SQLException {
-        ClaimInvoiceRecord territory = territory(territoryId);
-        if (territory == null || !controls(controllerUuid, territory)) {
-            return List.of();
-        }
-        try (Connection connection = EconomyDatabase.getConnection();
-             PreparedStatement statement = connection.prepareStatement("""
-                     UPDATE economy_claim_invoices SET debtor_player_uuid = ?
-                      WHERE territory_id = ? AND status = 'PENDING'
-                        AND invoice_type IN ('LAND', 'ANCHOR')
-                     """)) {
-            statement.setObject(1, controllerUuid);
-            statement.setObject(2, territoryId);
-            statement.executeUpdate();
-        }
-        return pendingForDebtor(controllerUuid, territoryId);
-    }
-
     private void applyPayment(Connection connection, ClaimInvoiceRecord invoice, UUID payerUuid) throws SQLException {
+        if ("BUNDLE".equals(invoice.invoiceType())) {
+            for (ClaimInvoiceRecord child : bundleChildren(connection, invoice.id())) {
+                if (!"PENDING".equals(child.status())) {
+                    throw new IllegalStateException("bundle child is no longer pending");
+                }
+                applyPayment(connection, child, payerUuid);
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE economy_claim_invoices SET status = 'PAID', paid_at = CURRENT_TIMESTAMP WHERE id = ?")) {
+                    statement.setObject(1, child.id());
+                    statement.executeUpdate();
+                }
+            }
+            return;
+        }
         if ("LAND".equals(invoice.invoiceType())) {
             try (PreparedStatement statement = connection.prepareStatement("""
                     UPDATE economy_claim_territories
@@ -267,6 +370,83 @@ public final class ClaimInvoiceService {
                 .map(m -> m.role() == GroupRole.LEADER).orElse(false);
     }
 
+    private boolean bundleIsPayable(UUID bundleId) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT COUNT(*) total,
+                            COUNT(*) FILTER (WHERE child.status = 'PENDING') pending
+                       FROM economy_claim_invoice_bundle_items item
+                       JOIN economy_claim_invoices child ON child.id = item.child_invoice_id
+                      WHERE item.bundle_invoice_id = ?
+                     """)) {
+            statement.setObject(1, bundleId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                resultSet.next();
+                return resultSet.getInt("total") > 0
+                        && resultSet.getInt("total") == resultSet.getInt("pending");
+            }
+        }
+    }
+
+    private boolean childHasPendingBundle(UUID invoiceId) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT 1
+                       FROM economy_claim_invoice_bundle_items item
+                       JOIN economy_claim_invoices bundle ON bundle.id = item.bundle_invoice_id
+                      WHERE item.child_invoice_id = ? AND bundle.status = 'PENDING' LIMIT 1
+                     """)) {
+            statement.setObject(1, invoiceId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        }
+    }
+
+    private ClaimInvoiceRecord pendingBundle(UUID debtor, UUID territoryId) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT i.id, i.territory_id, i.invoice_type, i.debtor_player_uuid,
+                            i.seller_player_uuid, i.seller_account_id, i.buyer_group_id, i.amount,
+                            i.minecraft_days, i.status, t.claim_type, t.group_id, t.owner_player_uuid,
+                            t.land_debt, t.land_price, t.anchor_paid_until_millis
+                       FROM economy_claim_invoices i
+                       JOIN economy_claim_territories t ON t.id = i.territory_id
+                      WHERE i.debtor_player_uuid = ? AND i.territory_id = ?
+                        AND i.invoice_type = 'BUNDLE' AND i.status = 'PENDING'
+                      ORDER BY i.created_at DESC LIMIT 1
+                     """)) {
+            statement.setObject(1, debtor);
+            statement.setObject(2, territoryId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next() ? readInvoice(resultSet) : null;
+            }
+        }
+    }
+
+    private List<ClaimInvoiceRecord> bundleChildren(Connection connection, UUID bundleId) throws SQLException {
+        List<ClaimInvoiceRecord> children = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT i.id, i.territory_id, i.invoice_type, i.debtor_player_uuid,
+                       i.seller_player_uuid, i.seller_account_id, i.buyer_group_id, i.amount,
+                       i.minecraft_days, i.status, t.claim_type, t.group_id, t.owner_player_uuid,
+                       t.land_debt, t.land_price, t.anchor_paid_until_millis
+                  FROM economy_claim_invoice_bundle_items item
+                  JOIN economy_claim_invoices i ON i.id = item.child_invoice_id
+                  JOIN economy_claim_territories t ON t.id = i.territory_id
+                 WHERE item.bundle_invoice_id = ? ORDER BY i.created_at
+                 FOR UPDATE OF i
+                """)) {
+            statement.setObject(1, bundleId);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                while (resultSet.next()) {
+                    children.add(readInvoice(resultSet));
+                }
+            }
+        }
+        return children;
+    }
+
     private ClaimInvoiceResult insertInvoice(UUID territoryId, String type, UUID debtor, UUID issuer,
                                              UUID seller, UUID sellerAccount, UUID buyerGroup,
                                              long amount, int days) throws SQLException {
@@ -322,11 +502,12 @@ public final class ClaimInvoiceService {
 
     private int territoryCount(GroupType type, UUID groupId, UUID ownerUuid) throws SQLException {
         String sql = type == GroupType.CLAN
-                ? "SELECT COUNT(*) FROM economy_claim_territories WHERE claim_type = 'CLAN' AND group_id = ?"
-                : "SELECT COUNT(*) FROM economy_claim_territories WHERE claim_type = 'PRIVATE_PROPERTY' AND owner_player_uuid = ?";
+                ? "SELECT COUNT(*) FROM economy_claim_territories WHERE server_uuid = ? AND claim_type = 'CLAN' AND group_id = ?"
+                : "SELECT COUNT(*) FROM economy_claim_territories WHERE server_uuid = ? AND claim_type = 'PRIVATE_PROPERTY' AND owner_player_uuid = ?";
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, type == GroupType.CLAN ? groupId : ownerUuid);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, type == GroupType.CLAN ? groupId : ownerUuid);
             try (ResultSet resultSet = statement.executeQuery()) {
                 resultSet.next();
                 return resultSet.getInt(1);
@@ -339,9 +520,10 @@ public final class ClaimInvoiceService {
              PreparedStatement statement = connection.prepareStatement("""
                      SELECT t.id territory_id, t.claim_type, t.group_id, t.owner_player_uuid,
                             t.land_debt, t.land_price, t.anchor_paid_until_millis
-                       FROM economy_claim_territories t WHERE t.id = ?
+                       FROM economy_claim_territories t WHERE t.id = ? AND t.server_uuid = ?
                      """)) {
             statement.setObject(1, territoryId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? readTerritory(resultSet) : null;
             }
@@ -362,9 +544,10 @@ public final class ClaimInvoiceService {
                        t.land_debt, t.land_price, t.anchor_paid_until_millis
                   FROM economy_claim_invoices i
                   JOIN economy_claim_territories t ON t.id = i.territory_id
-                 WHERE i.id = ?
+                 WHERE i.id = ? AND t.server_uuid = ?
                 """ + (lock ? " FOR UPDATE" : ""))) {
             statement.setObject(1, invoiceId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? readInvoice(resultSet) : null;
             }

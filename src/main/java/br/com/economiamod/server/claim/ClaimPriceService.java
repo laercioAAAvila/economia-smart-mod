@@ -1,5 +1,6 @@
 package br.com.economiamod.server.claim;
 
+import br.com.economiamod.common.group.GroupType;
 import br.com.economiamod.server.config.EconomyServerConfig;
 
 public final class ClaimPriceService {
@@ -19,6 +20,16 @@ public final class ClaimPriceService {
                 saturatingMultiply(normalizedLandPrice / 100L, percentage),
                 saturatingMultiply(normalizedLandPrice % 100L, percentage) / 100L);
         return saturatingAdd(EconomyServerConfig.ANCHOR_BASE_PRICE.get(), proportional);
+    }
+
+    public long anchorPrice(long landPrice, GroupType groupType) {
+        long price = anchorPrice(landPrice);
+        if (groupType != GroupType.CLAN) {
+            return price;
+        }
+        int percentage = EconomyServerConfig.ANCHOR_CLAN_TAX_MULTIPLIER_PERCENTAGE.get();
+        return saturatingAdd(saturatingMultiply(price / 100L, percentage),
+                saturatingMultiply(price % 100L, percentage) / 100L);
     }
 
     private PriceBand band(String dimension) {

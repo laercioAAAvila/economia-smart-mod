@@ -21,6 +21,12 @@ public final class CardValidationService {
     }
 
     public CardValidationResult validate(ItemStack stack) throws SQLException {
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            return validate(connection, stack);
+        }
+    }
+
+    public CardValidationResult validate(Connection connection, ItemStack stack) throws SQLException {
         CardItemData itemData = cardItemDataService.read(stack).orElse(null);
         if (itemData == null) {
             return CardValidationResult.invalid(CardValidationResultType.INVALID_ITEM);
@@ -41,8 +47,7 @@ public final class CardValidationService {
                    AND a.server_uuid = ?
                 """;
 
-        try (Connection connection = EconomyDatabase.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, itemData.cardId());
             statement.setObject(2, BankServerIdentityService.INSTANCE.current());
 

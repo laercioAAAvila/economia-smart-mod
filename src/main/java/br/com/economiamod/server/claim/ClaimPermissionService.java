@@ -3,7 +3,6 @@ package br.com.economiamod.server.claim;
 import br.com.economiamod.common.claim.ClaimRecord;
 import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
-import br.com.economiamod.common.group.GroupSummary;
 import br.com.economiamod.common.group.GroupType;
 import br.com.economiamod.common.group.TerritoryPermission;
 import br.com.economiamod.server.group.GroupRepository;
@@ -29,7 +28,7 @@ public final class ClaimPermissionService {
             if (playerUuid.equals(claim.ownerPlayerUuid())) {
                 return true;
             }
-            return isPrivatePropertyMember(playerUuid, claim.territoryId());
+            return privatePropertyMemberCan(playerUuid, claim.territoryId(), permission);
         }
         return groupRepository.membership(playerUuid, claim.groupId()).map(member -> member.has(permission)).orElse(false);
     }
@@ -50,30 +49,20 @@ public final class ClaimPermissionService {
                 || (claim.groupType() == GroupType.CLAN && member.role() == GroupRole.VICE_LEADER);
     }
 
-    public boolean visitorCanUseShop(UUID playerUuid, ClaimRecord claim, boolean buyShop) throws SQLException {
-        if (can(playerUuid, claim, TerritoryPermission.USE)) {
-            return true;
-        }
-        if (claim.groupType() == GroupType.CLAN && groupRepository.membership(playerUuid, claim.groupId()).isPresent()) {
-            return can(playerUuid, claim, TerritoryPermission.USE);
-        }
-        GroupSummary group = groupRepository.group(claim.groupId()).orElse(null);
-        return group != null && (buyShop ? group.visitorUseBuyShop() : group.visitorUseSellShop());
-    }
-
-    private boolean isPrivatePropertyMember(UUID playerUuid, UUID territoryId) throws SQLException {
+    private boolean privatePropertyMemberCan(UUID playerUuid, UUID territoryId,
+                                             TerritoryPermission permission) throws SQLException {
         if (territoryId == null) {
             return false;
         }
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT 1 FROM economy_private_property_members
+                     SELECT permission_mask FROM economy_private_property_members
                       WHERE territory_id = ? AND player_uuid = ? LIMIT 1
                      """)) {
             statement.setObject(1, territoryId);
             statement.setObject(2, playerUuid);
             try (var resultSet = statement.executeQuery()) {
-                return resultSet.next();
+                return resultSet.next() && permission.presentIn(resultSet.getInt("permission_mask"));
             }
         }
     }

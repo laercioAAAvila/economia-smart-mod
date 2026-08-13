@@ -193,13 +193,13 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
     }
 
     private void buildBank() {
-        amountInput = addInput(34, 70, 110, "screen.economia.group.amount");
+        amountInput = addInput(24, 76, 118, "screen.economia.group.amount");
         amountInput.setFilter(value -> value.matches("[0-9]*"));
-        addButton(154, 44, 68, "screen.economia.group.deposit", () -> sendMoney(GroupAction.DEPOSIT, false));
-        addButton(228, 44, 68, "screen.economia.group.withdraw", () -> sendMoney(GroupAction.WITHDRAW, false));
+        addButton(152, 40, 142, transferKey(true), () -> sendMoney(GroupAction.DEPOSIT, false));
+        addButton(152, 64, 142, transferKey(false), () -> sendMoney(GroupAction.WITHDRAW, false));
         if (state.groupType() == br.com.economiamod.common.group.GroupType.CLAN) {
-            addButton(154, 72, 68, "screen.economia.group.fund_in", () -> sendMoney(GroupAction.DEPOSIT, true));
-            addButton(228, 72, 68, "screen.economia.group.fund_out", () -> sendMoney(GroupAction.WITHDRAW, true));
+            addButton(152, 88, 142, "screen.economia.group.fund_in", () -> sendMoney(GroupAction.DEPOSIT, true));
+            addButton(152, 112, 142, "screen.economia.group.fund_out", () -> sendMoney(GroupAction.WITHDRAW, true));
         }
     }
 
@@ -208,10 +208,6 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
         textInput.setValue(state.groupName());
         addButton(214, 46, 80, "screen.economia.group.rename", () -> sendText(GroupAction.RENAME));
         if (state.role() == GroupRole.LEADER || state.role() == GroupRole.OWNER) {
-            addRawButton(24, 74, 132, visitorLabel("buy", state.visitorBuyShop()),
-                    () -> sendVisitor(!state.visitorBuyShop(), state.visitorSellShop()));
-            addRawButton(162, 74, 132, visitorLabel("sell", state.visitorSellShop()),
-                    () -> sendVisitor(state.visitorBuyShop(), !state.visitorSellShop()));
             addButton(162, 102, 132, "screen.economia.group.close", () -> send(GroupAction.CLOSE));
         }
         if (state.role() != GroupRole.LEADER && state.role() != GroupRole.OWNER) {
@@ -278,11 +274,6 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
                     0, amount, support, false, UUID.randomUUID()));
         } catch (NumberFormatException ignored) {
         }
-    }
-
-    private void sendVisitor(boolean buy, boolean sell) {
-        PacketDistributor.sendToServer(new GroupActionPayload(GroupAction.SET_VISITOR_SHOPS, "",
-                new UUID(0L, 0L), 0, 0L, buy, sell, UUID.randomUUID()));
     }
 
     private void selectUpgradePayment(DirectPaymentMethod method) {
@@ -400,9 +391,9 @@ public final class GroupManagementScreen extends AbstractContainerScreen<GroupMa
                 + role.name().toLowerCase(Locale.ROOT)).getString();
     }
 
-    private String visitorLabel(String shop, boolean enabled) {
-        return Component.translatable("screen.economia.group.visitor_" + shop,
-                enabled ? "ON" : "OFF").getString();
+    private String transferKey(boolean incoming) {
+        String target = state.groupType() == br.com.economiamod.common.group.GroupType.CLAN ? "clan" : "property";
+        return "screen.economia.group.transfer_" + (incoming ? "to_" : "from_") + target;
     }
 
     private String paymentLabel(DirectPaymentMethod method) {

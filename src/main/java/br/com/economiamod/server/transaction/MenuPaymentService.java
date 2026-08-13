@@ -48,6 +48,22 @@ public final class MenuPaymentService {
                 : MenuPaymentResult.denied(result.type().name().toLowerCase(java.util.Locale.ROOT));
     }
 
+    public MenuPaymentResult payDebit(Connection connection, ServerPlayer player, ItemStack card,
+                                      long amount, String idempotencyKey) throws SQLException {
+        if (amount <= 0L) {
+            return MenuPaymentResult.denied("invalid_amount");
+        }
+        if (card == null || card.isEmpty()) {
+            return MenuPaymentResult.denied("card_required");
+        }
+        DebitPurchaseResult result = cards.debitPurchase(connection, card, SystemAccountIds.TREASURY,
+                amount, player.getUUID(), idempotencyKey);
+        return result.type() == DebitPurchaseResultType.COMPLETED
+                || result.type() == DebitPurchaseResultType.DUPLICATE_COMPLETED
+                ? MenuPaymentResult.completed()
+                : MenuPaymentResult.denied(result.type().name().toLowerCase(java.util.Locale.ROOT));
+    }
+
     private MenuPaymentResult payCash(ServerPlayer player, Container cash, long amount, String key)
             throws SQLException {
         try (Connection connection = EconomyDatabase.getConnection()) {

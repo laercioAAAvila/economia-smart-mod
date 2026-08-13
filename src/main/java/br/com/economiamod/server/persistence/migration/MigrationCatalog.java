@@ -28,7 +28,11 @@ public final class MigrationCatalog {
             migration(21, "add_claim_territories_invoices_and_anchors"),
             migration(22, "add_claim_payments_and_upgrades"),
             migration(23, "add_minecraft_player_name"),
-            migration(24, "scope_player_accounts_by_server")
+            migration(24, "scope_player_accounts_by_server"),
+            migration(25, "private_property_permissions"),
+            migration(26, "claim_invoice_bundle_cleanup"),
+            migration(27, "scope_world_data_by_server"),
+            migration(28, "scope_commercial_blocks_by_server")
     );
 
     private MigrationCatalog() {

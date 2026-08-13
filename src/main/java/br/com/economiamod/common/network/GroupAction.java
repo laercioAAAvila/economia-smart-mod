@@ -13,7 +13,6 @@ public enum GroupAction {
     LEAVE,
     RENAME,
     CLOSE,
-    SET_VISITOR_SHOPS,
     DEPOSIT,
     WITHDRAW,
     SET_UPGRADE_PAYMENT,

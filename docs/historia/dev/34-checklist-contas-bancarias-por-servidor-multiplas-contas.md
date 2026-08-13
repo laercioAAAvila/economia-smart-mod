@@ -4,7 +4,8 @@ Referência: `HIST-DEV-33`.
 
 ## Configuração e identidade
 
-- [x] Criar `serverUuid` estável e automático na configuração do mod.
+- [x] Criar `serverUuid` estável e automático nos dados salvos do mundo.
+- [x] Gerar outro `serverUuid` ao apagar e recriar o save.
 - [x] Configurar `maxAccountsPerPlayer`, padrão 3, de 1 até o limite suportado pelo servidor.
 - [x] Configurar `openingFee`, padrão R$ 1.000 e mínimo zero.
 - [x] Salvar UUID e nome atual do jogador nas contas novas.

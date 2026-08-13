@@ -1,6 +1,7 @@
 package br.com.economiamod.server.group;
 
 import br.com.economiamod.EconomiaMod;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import br.com.economiamod.server.persistence.EconomyDatabaseState;
 import java.sql.Connection;
@@ -21,11 +22,21 @@ public final class ServerActiveClockService {
     }
 
     public synchronized void start() throws SQLException {
-        try (Connection connection = EconomyDatabase.getConnection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT active_millis FROM economy_server_clock WHERE id = 1")) {
-            try (ResultSet resultSet = statement.executeQuery()) {
-                persistedMillis = resultSet.next() ? resultSet.getLong(1) : 0L;
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            try (PreparedStatement insert = connection.prepareStatement("""
+                    INSERT INTO economy_server_clock(id, server_uuid, active_millis, updated_at)
+                    VALUES (1, ?, 0, CURRENT_TIMESTAMP)
+                    ON CONFLICT (server_uuid) WHERE server_uuid IS NOT NULL DO NOTHING
+                    """)) {
+                insert.setObject(1, BankServerIdentityService.INSTANCE.current());
+                insert.executeUpdate();
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT active_millis FROM economy_server_clock WHERE server_uuid = ?")) {
+                statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    persistedMillis = resultSet.next() ? resultSet.getLong(1) : 0L;
+                }
             }
         }
         startedAtNanos = System.nanoTime();
@@ -75,9 +86,10 @@ public final class ServerActiveClockService {
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE economy_server_clock
                         SET active_millis = ?, updated_at = CURRENT_TIMESTAMP
-                      WHERE id = 1
+                      WHERE server_uuid = ?
                      """)) {
             statement.setLong(1, current);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             statement.executeUpdate();
         }
         persistedMillis = current;

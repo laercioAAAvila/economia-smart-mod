@@ -4,6 +4,7 @@ import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.GroupSummary;
 import br.com.economiamod.common.group.GroupType;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -23,13 +24,15 @@ public final class GroupRepository {
 
     public Optional<GroupMembership> membership(Connection connection, UUID playerUuid, GroupType type) throws SQLException {
         String sql = """
-                SELECT group_id, group_type, player_uuid, role, permission_mask, last_active_millis
-                  FROM economy_group_members
-                 WHERE player_uuid = ? AND group_type = ?
+                SELECT m.group_id, m.group_type, m.player_uuid, m.role, m.permission_mask, m.last_active_millis
+                  FROM economy_group_members m
+                  JOIN economy_groups g ON g.id = m.group_id
+                 WHERE m.player_uuid = ? AND m.group_type = ? AND g.server_uuid = ? AND g.status = 'ACTIVE'
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, playerUuid);
             statement.setString(2, type.name());
+            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(readMembership(resultSet)) : Optional.empty();
             }
@@ -38,14 +41,16 @@ public final class GroupRepository {
 
     public Optional<GroupMembership> membership(UUID playerUuid, UUID groupId) throws SQLException {
         String sql = """
-                SELECT group_id, group_type, player_uuid, role, permission_mask, last_active_millis
-                  FROM economy_group_members
-                 WHERE player_uuid = ? AND group_id = ?
+                SELECT m.group_id, m.group_type, m.player_uuid, m.role, m.permission_mask, m.last_active_millis
+                  FROM economy_group_members m
+                  JOIN economy_groups g ON g.id = m.group_id
+                 WHERE m.player_uuid = ? AND m.group_id = ? AND g.server_uuid = ? AND g.status = 'ACTIVE'
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, playerUuid);
             statement.setObject(2, groupId);
+            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(readMembership(resultSet)) : Optional.empty();
             }
@@ -55,14 +60,14 @@ public final class GroupRepository {
     public Optional<GroupSummary> group(UUID groupId) throws SQLException {
         String sql = """
                 SELECT id, group_type, name, leader_player_uuid, vice_leader_player_uuid,
-                       account_id, support_account_id, claim_limit,
-                       visitor_use_buy_shop, visitor_use_sell_shop
+                       account_id, support_account_id, claim_limit
                   FROM economy_groups
-                 WHERE id = ? AND status = 'ACTIVE'
+                 WHERE id = ? AND server_uuid = ? AND status = 'ACTIVE'
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -75,9 +80,7 @@ public final class GroupRepository {
                         resultSet.getObject("vice_leader_player_uuid", UUID.class),
                         resultSet.getObject("account_id", UUID.class),
                         resultSet.getObject("support_account_id", UUID.class),
-                        resultSet.getInt("claim_limit"),
-                        resultSet.getBoolean("visitor_use_buy_shop"),
-                        resultSet.getBoolean("visitor_use_sell_shop")
+                        resultSet.getInt("claim_limit")
                 ));
             }
         }
@@ -96,14 +99,16 @@ public final class GroupRepository {
 
     public void updateLastActivity(UUID playerUuid, long activeMillis) throws SQLException {
         String sql = """
-                UPDATE economy_group_members
+                UPDATE economy_group_members m
                    SET last_active_millis = GREATEST(last_active_millis, ?), updated_at = CURRENT_TIMESTAMP
-                 WHERE player_uuid = ?
+                  FROM economy_groups g
+                 WHERE m.group_id = g.id AND m.player_uuid = ? AND g.server_uuid = ? AND g.status = 'ACTIVE'
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, activeMillis);
             statement.setObject(2, playerUuid);
+            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
             statement.executeUpdate();
         }
     }
@@ -112,12 +117,15 @@ public final class GroupRepository {
         List<GroupMemberView> members = new ArrayList<>();
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT player_uuid, role, permission_mask, last_active_millis
-                       FROM economy_group_members WHERE group_id = ?
-                      ORDER BY CASE role WHEN 'OWNER' THEN 0 WHEN 'LEADER' THEN 1 WHEN 'VICE_LEADER' THEN 2 ELSE 3 END,
-                               last_active_millis DESC
+                     SELECT m.player_uuid, m.role, m.permission_mask, m.last_active_millis
+                       FROM economy_group_members m
+                       JOIN economy_groups g ON g.id = m.group_id
+                      WHERE m.group_id = ? AND g.server_uuid = ? AND g.status = 'ACTIVE'
+                      ORDER BY CASE m.role WHEN 'OWNER' THEN 0 WHEN 'LEADER' THEN 1 WHEN 'VICE_LEADER' THEN 2 ELSE 3 END,
+                               m.last_active_millis DESC
                      """)) {
             statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     members.add(new GroupMemberView(
@@ -139,10 +147,12 @@ public final class GroupRepository {
                        FROM economy_group_invites i
                        JOIN economy_groups g ON g.id = i.group_id AND g.status = 'ACTIVE'
                       WHERE i.invited_player_uuid = ? AND i.group_type = ? AND i.status = 'PENDING'
+                        AND g.server_uuid = ?
                       ORDER BY i.created_at DESC
                      """)) {
             statement.setObject(1, playerUuid);
             statement.setString(2, type.name());
+            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     invites.add(new GroupInviteView(

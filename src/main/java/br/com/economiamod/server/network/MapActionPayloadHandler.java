@@ -5,14 +5,12 @@ import br.com.economiamod.common.claim.ClaimRecord;
 import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.GroupType;
-import br.com.economiamod.common.invoice.ClaimInvoiceItemDataService;
 import br.com.economiamod.common.network.MapActionPayload;
 import br.com.economiamod.common.network.MapDataPayload;
 import br.com.economiamod.server.claim.ClaimRepository;
 import br.com.economiamod.server.claim.ClaimService;
 import br.com.economiamod.server.claim.ClaimOperationResult;
-import br.com.economiamod.server.claim.ClaimInvoiceRecord;
-import br.com.economiamod.server.claim.ClaimInvoiceService;
+import br.com.economiamod.server.claim.ClaimChunkCardPurchaseService;
 import br.com.economiamod.server.group.GroupRepository;
 import br.com.economiamod.server.group.GroupChatService;
 import br.com.economiamod.server.group.PrivatePropertyAccessService;
@@ -33,9 +31,8 @@ public final class MapActionPayloadHandler {
     private static final ClaimRepository CLAIMS = new ClaimRepository();
     private static final GroupRepository GROUPS = new GroupRepository();
     private static final ClaimService CLAIM_SERVICE = new ClaimService();
-    private static final ClaimInvoiceService INVOICES = new ClaimInvoiceService();
-    private static final ClaimInvoiceItemDataService INVOICE_ITEMS = new ClaimInvoiceItemDataService();
     private static final PrivatePropertyAccessService PRIVATE_PROPERTIES = new PrivatePropertyAccessService();
+    private static final ClaimChunkCardPurchaseService CHUNK_PURCHASES = new ClaimChunkCardPurchaseService();
 
     private MapActionPayloadHandler() {
     }
@@ -91,23 +88,13 @@ public final class MapActionPayloadHandler {
             player.displayClientMessage(Component.translatable("claim.economia.error.invalid_dimension"), true);
             return;
         }
-        ClaimOperationResult result = CLAIM_SERVICE.purchaseChunk(player.getUUID(), payload.targetId(),
+        ClaimOperationResult result = CHUNK_PURCHASES.purchase(player, payload.targetId(),
                 currentDimension, payload.x(), payload.z());
         if (!result.success()) {
             player.displayClientMessage(Component.translatable("claim.economia.error." + result.code()), true);
             return;
         }
-        ClaimInvoiceRecord invoice = INVOICES.invoice(result.id());
-        if (invoice == null) {
-            player.displayClientMessage(Component.translatable("commands.economia.unavailable"), true);
-            return;
-        }
-        var stack = INVOICE_ITEMS.create(invoice.id(), invoice.amount(), invoice.invoiceType());
-        if (!player.getInventory().add(stack)) {
-            player.drop(stack, false);
-        }
-        player.displayClientMessage(Component.translatable(
-                "claim.economia.chunk_purchased", invoice.amount()), true);
+        player.displayClientMessage(Component.translatable("claim.economia.chunk_purchased"), true);
     }
 
     private static void toggleClaim(ServerPlayer player, String requestedChannel,

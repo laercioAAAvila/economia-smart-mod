@@ -2,6 +2,7 @@ package br.com.economiamod.server.group;
 
 import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.group.GroupType;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
@@ -33,14 +34,15 @@ public final class ClanLeadershipService {
                     ON leader.group_id = g.id AND leader.player_uuid = g.leader_player_uuid
                   LEFT JOIN economy_group_members vice
                     ON vice.group_id = g.id AND vice.player_uuid = g.vice_leader_player_uuid
-                 WHERE g.group_type = 'CLAN' AND g.status = 'ACTIVE'
+                 WHERE g.server_uuid = ? AND g.group_type = 'CLAN' AND g.status = 'ACTIVE'
                    AND leader.last_active_millis <= ?
                    AND (g.vice_leader_player_uuid IS NULL OR vice.last_active_millis <= ?)
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, inactiveThreshold);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
             statement.setLong(2, inactiveThreshold);
+            statement.setLong(3, inactiveThreshold);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     clans.add(new InactiveClan(

@@ -38,7 +38,6 @@ public final class EconomyServerConfig {
     public static final ModConfigSpec.BooleanValue BANK_GOLD_ALLOW_PHYSICAL_NOTES;
     public static final ModConfigSpec.BooleanValue BANK_GOLD_ALLOW_CREDIT_PURCHASE;
     public static final ModConfigSpec.LongValue BANK_CARD_ISSUE_FEE;
-    public static final ModConfigSpec.ConfigValue<String> BANK_SERVER_UUID;
     public static final ModConfigSpec.IntValue BANK_MAX_ACCOUNTS_PER_PLAYER;
     public static final ModConfigSpec.LongValue BANK_ACCOUNT_OPENING_FEE;
     public static final ModConfigSpec.LongValue MAIL_PRICE_PER_OCCUPIED_SLOT;
@@ -86,6 +85,7 @@ public final class EconomyServerConfig {
     public static final ModConfigSpec.IntValue ANCHOR_LAND_PERCENTAGE;
     public static final ModConfigSpec.IntValue ANCHOR_DEFAULT_MINECRAFT_DAYS;
     public static final ModConfigSpec.IntValue ANCHOR_MAX_MINECRAFT_DAYS;
+    public static final ModConfigSpec.IntValue ANCHOR_CLAN_TAX_MULTIPLIER_PERCENTAGE;
 
     public static final ModConfigSpec SPEC;
 
@@ -125,7 +125,6 @@ public final class EconomyServerConfig {
 
         BUILDER.push("bank");
         BUILDER.push("accounts");
-        BANK_SERVER_UUID = BUILDER.define("serverUuid", "");
         BANK_MAX_ACCOUNTS_PER_PLAYER = BUILDER.defineInRange("maxAccountsPerPlayer", 3, 1, Integer.MAX_VALUE);
         BANK_ACCOUNT_OPENING_FEE = BUILDER.defineInRange("openingFee", 1_000L, 0L, (long) Integer.MAX_VALUE);
         BUILDER.pop();
@@ -215,6 +214,8 @@ public final class EconomyServerConfig {
         ANCHOR_LAND_PERCENTAGE = BUILDER.defineInRange("landPercentage", 50, 0, 10_000);
         ANCHOR_DEFAULT_MINECRAFT_DAYS = BUILDER.defineInRange("defaultMinecraftDays", 25, 1, Integer.MAX_VALUE);
         ANCHOR_MAX_MINECRAFT_DAYS = BUILDER.defineInRange("maxMinecraftDays", 1_000, 1, Integer.MAX_VALUE);
+        ANCHOR_CLAN_TAX_MULTIPLIER_PERCENTAGE = BUILDER.defineInRange(
+                "clanTaxMultiplierPercentage", 200, 101, 10_000);
         BUILDER.pop();
 
         SPEC = BUILDER.build();

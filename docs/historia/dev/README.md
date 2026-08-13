@@ -47,7 +47,7 @@ Esta pasta traduz a historia funcional de `docs/historia/geral` em decisoes tecn
 | `HIST-DEV-33` | `33-contas-bancarias-por-servidor-multiplas-contas-taxa-abertura.md` | Contas por servidor, múltiplas contas e taxa de abertura |
 | `CHK-DEV-34` | `34-checklist-contas-bancarias-por-servidor-multiplas-contas.md` | `HIST-DEV-33` |
 | `HIST-DEV-35` | `35-compra-chunk-pelo-bloco-claim-mapa-texturizado.md` | Compra de expansão pelo Bloco de Claim e mapa com terreno |
-| `CHK-DEV-36` | `36-checklist-compra-chunk-mapa-texturizado.md` | `HIST-DEV-35` |
+| `CHK-DEV-36` | `36-checklist-compra-chunk-mapa-texturizado.md` | Compra por cartão autenticado, taxas, mapa, permissões e diagnóstico de `HIST-DEV-35` |
 
 ## Principios tecnicos
 
@@ -60,3 +60,6 @@ Esta pasta traduz a historia funcional de `docs/historia/geral` em decisoes tecn
 - Blocos no mundo guardam somente UUID tecnico e dados visuais minimos.
 - Inventarios comerciais persistentes ficam no SQL.
 - Nenhuma falha de servidor pode fazer jogador perder dinheiro ou item.
+- Migrações SQL já aplicadas são imutáveis; todo ajuste posterior recebe nova versão.
+- Logs operacionais podem usar UUIDs técnicos, etapa e SQLState, mas nunca credenciais
+  nem conteúdo sensível de contas ou cartões.

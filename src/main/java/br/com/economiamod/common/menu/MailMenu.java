@@ -545,6 +545,7 @@ public final class MailMenu extends AbstractContainerMenu {
                 saveReceivedIfAllowed(serverPlayer);
             } catch (SQLException exception) {
                 EconomiaMod.LOGGER.warn("Falha ao salvar recebimentos do Correio.", exception);
+                serverPlayer.sendSystemMessage(Component.translatable("commands.economia.mail.send_failed"));
             }
             inventoryService.giveContainer(serverPlayer, sendContainer);
             inventoryService.giveContainer(serverPlayer, cardContainer);

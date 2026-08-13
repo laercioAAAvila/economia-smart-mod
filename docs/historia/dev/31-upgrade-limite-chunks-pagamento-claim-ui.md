@@ -10,6 +10,9 @@ Esta história complementa `HIST-DEV-26`, `HIST-DEV-27` e `HIST-DEV-29`. Em caso
 divergência sobre limite, preço de upgrade ou pagamento inicial do terreno, esta é a
 regra vigente.
 
+> A compra de um chunk dentro do limite já adquirido segue `HIST-DEV-35`: usa débito
+> no cartão autenticado, pede confirmação no mapa e não gera boleto nem dívida.
+
 ## Configuração do limite e do preço
 
 Todos os parâmetros pertencem à configuração do mod no servidor:
@@ -124,6 +127,8 @@ devolve os itens inseridos segundo as garantias atuais de inventário.
 - Slots de cartão, dinheiro e itens precisam permanecer identificáveis em todas as
   escalas de GUI suportadas.
 - No bloco de gerenciamento, o cartão aparece apenas na etapa de autenticação.
+- Toda nova abertura do Bloco de Claim exige autenticação; a sessão não sobrevive ao
+  fechamento da interface.
 - Após autenticar, o slot e o item do cartão ficam ocultos e inativos na interface.
 - O cartão permanece protegido no menu do servidor e é devolvido ao sair, usar `ESC`
   ou perder a validade do menu.
@@ -160,4 +165,3 @@ sem indicação visual.
 - Ao autenticar nas telas mostradas como Clã ou Propriedade Privada, o cartão deixa de
   aparecer na etapa autenticada.
 - Os slots exibidos nas interfaces possuem desenho individual claro.
-

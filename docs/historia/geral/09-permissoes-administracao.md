@@ -48,6 +48,7 @@ Pode:
 - Bloquear cartões
 - Realizar estornos
 - Consultar auditorias
+- Quebrar o Bloco de Claim de clã ou propriedade privada com nível de permissão `2`
 
 ---
 
@@ -187,6 +188,32 @@ Ao remover:
 Pode ser removida somente por operador ou administrador.
 
 Se possuir estoque, a quebra normal será bloqueada.
+
+### Bloco de Claim de clã e propriedade privada
+
+Na quebra normal, somente o controlador autorizado pode remover a âncora, respeitando
+as validações financeiras do território.
+
+Um administrador com nível de permissão `2` pode quebrar qualquer Bloco de Claim. A
+remoção administrativa desfaz o território inteiro associado à âncora, incluindo todos
+os chunks vinculados, e não exige que o administrador pertença ao clã ou à propriedade.
+
+Explosões e pistões não podem remover ou deslocar o Bloco de Claim nem modificar chunks
+protegidos.
+
+### Lojas dentro de territórios
+
+Lojas de compra e venda permanecem abertas ao público dentro ou fora de um claim. Essa
+exceção permite apenas usar a interface comercial; não transfere propriedade nem
+autoriza remover o bloco. O proprietário da loja mantém seu controle administrativo.
+
+Na propriedade privada, convidados recebem permissões independentes por território:
+
+- usar itens e blocos;
+- colocar itens e blocos;
+- remover ou destruir blocos comuns.
+
+O clã aplica as mesmas ações conforme as permissões do cargo ou membro.
 
 ---
 

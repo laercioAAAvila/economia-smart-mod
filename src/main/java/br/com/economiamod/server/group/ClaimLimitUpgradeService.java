@@ -4,6 +4,7 @@ import br.com.economiamod.common.claim.DirectPaymentMethod;
 import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.GroupSummary;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import br.com.economiamod.server.transaction.MenuPaymentResult;
@@ -62,12 +63,14 @@ public final class ClaimLimitUpgradeService {
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE economy_groups
                         SET claim_limit = GREATEST(?, LEAST(claim_limit, ?)), updated_at = CURRENT_TIMESTAMP
-                      WHERE status = 'ACTIVE' AND claim_limit <> GREATEST(?, LEAST(claim_limit, ?))
+                      WHERE server_uuid = ? AND status = 'ACTIVE'
+                        AND claim_limit <> GREATEST(?, LEAST(claim_limit, ?))
                      """)) {
             statement.setInt(1, minimum);
             statement.setInt(2, maximum);
-            statement.setInt(3, minimum);
-            statement.setInt(4, maximum);
+            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
+            statement.setInt(4, minimum);
+            statement.setInt(5, maximum);
             statement.executeUpdate();
         }
     }

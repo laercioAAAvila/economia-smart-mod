@@ -6,6 +6,11 @@ import br.com.economiamod.common.money.MoneyStackCalculator;
 import br.com.economiamod.registry.ModBlocks;
 import br.com.economiamod.registry.ModMenus;
 import br.com.economiamod.server.claim.ClaimAnchorMenuState;
+import br.com.economiamod.server.account.AccountQueryService;
+import br.com.economiamod.server.card.CardValidationResult;
+import br.com.economiamod.server.card.CardValidationResultType;
+import br.com.economiamod.server.card.CardValidationService;
+import java.sql.SQLException;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
@@ -30,6 +35,9 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
     private final SimpleContainer cardContainer = new SimpleContainer(1);
     private final SimpleContainer cashContainer = new SimpleContainer(6);
     private final CardItemDataService cardData = new CardItemDataService();
+    private final CardValidationService cardValidation = new CardValidationService(cardData);
+    private final AccountQueryService accountQuery = new AccountQueryService();
+    private int authenticatedFlag;
     private int paymentOpenFlag;
     private int cashModeFlag;
 
@@ -54,6 +62,22 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
 
     public boolean paymentOpen() {
         return paymentOpenFlag == 1;
+    }
+
+    public boolean authenticate(net.minecraft.server.level.ServerPlayer player) throws SQLException {
+        CardValidationResult card = cardValidation.validate(cardContainer.getItem(0));
+        authenticatedFlag = card.type() == CardValidationResultType.VALID
+                && accountQuery.playerOwnsActiveAccount(player.getUUID(), card.accountId()) ? 1 : 0;
+        broadcastChanges();
+        return authenticated();
+    }
+
+    public boolean authenticated() {
+        return authenticatedFlag == 1;
+    }
+
+    public ItemStack authenticatedCard() {
+        return authenticated() ? cardContainer.getItem(0).copy() : ItemStack.EMPTY;
     }
 
     public boolean cashMode() {
@@ -103,6 +127,16 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
         buffer.writeVarInt(state.chunkLimit());
         buffer.writeLong(state.nextChunkPrice());
         buffer.writeBoolean(state.canBuyChunk());
+        buffer.writeLong(state.currentTax());
+        buffer.writeLong(state.totalTax());
+        buffer.writeVarInt(state.taxCount());
+        buffer.writeVarInt(state.taxPeriodDays());
+        buffer.writeVarInt(state.privateMembers().size());
+        for (var member : state.privateMembers()) {
+            buffer.writeUUID(member.playerUuid());
+            buffer.writeUtf(member.playerName(), 64);
+            buffer.writeVarInt(member.permissionMask());
+        }
     }
 
     private static ClaimAnchorMenuState readState(FriendlyByteBuf buffer) {
@@ -111,16 +145,41 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
         GroupType type = GroupType.values()[buffer.readVarInt()];
         String dimension = buffer.readUtf(255);
         BlockPos pos = buffer.readBlockPos();
+        long landPrice = buffer.readLong();
+        long landDebt = buffer.readLong();
+        int territoryCount = buffer.readVarInt();
+        int territoryLimit = buffer.readVarInt();
+        boolean active = buffer.readBoolean();
+        boolean canManage = buffer.readBoolean();
+        boolean canClaim = buffer.readBoolean();
+        long anchorPrice = buffer.readLong();
+        int anchorDays = buffer.readVarInt();
+        int defaultDays = buffer.readVarInt();
+        int maxDays = buffer.readVarInt();
+        long salePrice = buffer.readLong();
+        int chunkCount = buffer.readVarInt();
+        int chunkLimit = buffer.readVarInt();
+        long nextChunkPrice = buffer.readLong();
+        boolean canBuyChunk = buffer.readBoolean();
+        long currentTax = buffer.readLong();
+        long totalTax = buffer.readLong();
+        int taxCount = buffer.readVarInt();
+        int taxPeriodDays = buffer.readVarInt();
+        int memberCount = buffer.readVarInt();
+        java.util.List<br.com.economiamod.server.claim.PrivatePropertyMemberView> members = new java.util.ArrayList<>();
+        for (int index = 0; index < memberCount; index++) {
+            members.add(new br.com.economiamod.server.claim.PrivatePropertyMemberView(
+                    buffer.readUUID(), buffer.readUtf(64), buffer.readVarInt()));
+        }
         return new ClaimAnchorMenuState(anchorId, territoryId, type, dimension, pos.getX(), pos.getY(), pos.getZ(),
-                buffer.readLong(), buffer.readLong(), buffer.readVarInt(), buffer.readVarInt(),
-                buffer.readBoolean(), buffer.readBoolean(), buffer.readBoolean(), buffer.readLong(),
-                buffer.readVarInt(), buffer.readVarInt(), buffer.readVarInt(), buffer.readLong(),
-                buffer.readVarInt(), buffer.readVarInt(), buffer.readLong(), buffer.readBoolean());
+                landPrice, landDebt, territoryCount, territoryLimit, active, canManage, canClaim, anchorPrice,
+                anchorDays, defaultDays, maxDays, salePrice, chunkCount, chunkLimit, nextChunkPrice, canBuyChunk,
+                currentTax, totalTax, taxCount, taxPeriodDays, java.util.List.copyOf(members));
     }
 
     @Override
     public ItemStack quickMoveStack(Player player, int index) {
-        if (!paymentOpen() || index < 0 || index >= slots.size()) {
+        if ((!paymentOpen() && authenticated()) || index < 0 || index >= slots.size()) {
             return ItemStack.EMPTY;
         }
         Slot slot = slots.get(index);
@@ -133,7 +192,7 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
             if (!moveItemStackTo(current, PLAYER_START, PLAYER_END, true)) {
                 return ItemStack.EMPTY;
             }
-        } else if (!cashMode() && cardData.isValidCardItem(current)) {
+        } else if ((!authenticated() || paymentOpen() && !cashMode()) && cardData.isValidCardItem(current)) {
             if (!moveItemStackTo(current, CARD_SLOT, CARD_SLOT + 1, false)) {
                 return ItemStack.EMPTY;
             }
@@ -162,6 +221,7 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
         super.removed(player);
         paymentOpenFlag = 0;
         cashModeFlag = 0;
+        authenticatedFlag = 0;
         if (!player.level().isClientSide()) {
             clearContainer(player, cardContainer);
             clearContainer(player, cashContainer);
@@ -182,7 +242,7 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
 
             @Override
             public boolean isActive() {
-                return paymentOpen() && !cashMode();
+                return !authenticated() || paymentOpen() && !cashMode();
             }
         });
         for (int slot = 0; slot < 6; slot++) {
@@ -206,7 +266,7 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
                 addSlot(new Slot(inventory, column + row * 9 + 9, 58 + column * 18, 156 + row * 18) {
                     @Override
                     public boolean isActive() {
-                        return paymentOpen();
+                        return !authenticated() || paymentOpen();
                     }
                 });
             }
@@ -215,13 +275,14 @@ public final class ClaimAnchorMenu extends AbstractContainerMenu {
             addSlot(new Slot(inventory, column, 58 + column * 18, 214) {
                 @Override
                 public boolean isActive() {
-                    return paymentOpen();
+                    return !authenticated() || paymentOpen();
                 }
             });
         }
     }
 
     private void addStateSlots() {
+        addDataSlot(flag(() -> authenticatedFlag, value -> authenticatedFlag = value));
         addDataSlot(flag(() -> paymentOpenFlag, value -> paymentOpenFlag = value));
         addDataSlot(flag(() -> cashModeFlag, value -> cashModeFlag = value));
     }

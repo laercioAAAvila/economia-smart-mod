@@ -828,9 +828,9 @@ Ao clicar em:
 Claim
 ```
 
-o chunk do bloco deverá ser reclamado imediatamente.
-
-Depois o mapa será aberto automaticamente.
+o bloco cria primeiro uma âncora pendente. O jogador deve se
+autenticar com cartão, clicar em `Dar Claim`, escolher débito, crédito ou dinheiro e
+confirmar o pagamento. O chunk da âncora somente é reclamado depois da aprovação.
 
 Exemplo:
 
@@ -874,7 +874,9 @@ Comprar chunk
 → abrir mapa de seleção
 → mostrar o preço do chunk apontado
 → clicar em chunk livre adjacente
-→ adicionar Claim e emitir boleto
+→ mostrar confirmação, valor e aviso de irreversibilidade
+→ debitar o cartão autenticado
+→ adicionar Claim sem emitir boleto de compra
 
 No mapa comum, clique em chunk próprio
 → remover Claim

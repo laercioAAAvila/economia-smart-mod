@@ -1,6 +1,8 @@
 # Atualização da história — Claims, propriedades privadas, âncoras e vendas
 
-> O pagamento inicial de `Dar Claim` foi atualizado por `HIST-DEV-31`. O pagamento agora ocorre no próprio fluxo do Bloco de Claim antes da ativação; boletos de âncora e venda continuam válidos.
+> O pagamento inicial de `Dar Claim` foi atualizado por `HIST-DEV-31`. A expansão e
+> as cobranças recorrentes seguem `HIST-DEV-35`: chunk novo é pago diretamente com o
+> cartão autenticado; boletos do claim representam taxas, consolidação de taxas e venda.
 
 ## Propriedade privada
 
@@ -57,10 +59,35 @@ o máximo. A venda não cancela dias já pagos.
 
 ## Boletos
 
-Âncoras e vendas geram boletos persistidos e vinculados ao território. O Caixa
-Eletrônico aceita esses boletos e conclui seus efeitos somente depois de um pagamento
-confirmado e idempotente. A cobrança inicial do claim é concluída no próprio Bloco de
-Claim conforme `HIST-DEV-31`.
+Taxas de âncora e vendas geram boletos persistidos e vinculados ao território. A página
+`Taxas a pagar` permite imprimir a taxa atual ou reunir as cobranças pendentes em um
+único boleto. O Caixa Eletrônico aceita esses boletos e conclui seus efeitos somente
+depois de pagamento confirmado e idempotente.
+
+A cobrança inicial do claim é concluída no próprio Bloco de Claim conforme
+`HIST-DEV-31`. A compra de expansão é debitada diretamente do cartão autenticado,
+conforme `HIST-DEV-35`, e não emite boleto. Boletos `LAND` antigos permanecem
+compatíveis apenas para preservar dados já existentes.
+
+## Permissões da propriedade privada
+
+O proprietário pode convidar jogadores por território e configurar individualmente:
+
+- `USAR`: abrir e utilizar itens e blocos no território;
+- `COLOCAR`: colocar blocos e itens no chão;
+- `REMOVER`: quebrar ou remover blocos comuns.
+
+Lojas de compra e venda são exceção pública à permissão de uso. Qualquer visitante
+pode abrir a loja dentro ou fora do território, sem perder as proteções de propriedade
+do bloco comercial nem o direito do dono de removê-lo.
+
+O clã aplica as mesmas ações territoriais por máscara de permissão dos cargos e membros.
+
+## Remoção administrativa
+
+Um administrador com nível de permissão `2` pode quebrar o Bloco de Claim de clã ou de
+propriedade privada. A ação desativa a âncora e remove o território e todos os chunks
+vinculados, mesmo quando o administrador não é o controlador do grupo.
 
 ## Venda
 
@@ -79,4 +106,5 @@ dívida de terreno igual a zero. Qualquer uma delas bloqueia a solicitação.
 ## Navegação
 
 As telas de informações, âncora, boleto e venda oferecem `Voltar`; `ESC` encerra a
-interface sem executar ações pendentes.
+interface sem executar ações pendentes. Ao fechar o Bloco de Claim, a autenticação é
+encerrada, o cartão é devolvido e a próxima abertura exige autenticação novamente.

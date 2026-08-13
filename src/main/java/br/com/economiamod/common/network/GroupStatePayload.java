@@ -15,7 +15,6 @@ public record GroupStatePayload(boolean authenticated, GroupType groupType, bool
                                 String groupName, GroupRole role, long balance, long supportBalance, int claimLimit,
                                 int upgradeMaxLimit, int upgradePercentageBasisPoints, long upgradePrice,
                                 boolean upgradeMaximumReached, boolean upgradeConfigurationValid,
-                                boolean visitorBuyShop, boolean visitorSellShop,
                                 List<MemberSummary> members, List<InviteSummary> invites) implements CustomPacketPayload {
     private static final UUID ZERO = new UUID(0L, 0L);
     public static final Type<GroupStatePayload> TYPE = new Type<>(
@@ -39,8 +38,6 @@ public record GroupStatePayload(boolean authenticated, GroupType groupType, bool
             long upgradePrice = buffer.readLong();
             boolean upgradeMaximumReached = buffer.readBoolean();
             boolean upgradeConfigurationValid = buffer.readBoolean();
-            boolean visitorBuy = buffer.readBoolean();
-            boolean visitorSell = buffer.readBoolean();
             int memberCount = Math.min(1000, Math.max(0, buffer.readVarInt()));
             List<MemberSummary> members = new ArrayList<>(memberCount);
             for (int index = 0; index < memberCount; index++) {
@@ -54,7 +51,7 @@ public record GroupStatePayload(boolean authenticated, GroupType groupType, bool
             }
             return new GroupStatePayload(authenticated, type, hasGroup, groupId, name, role, balance, support,
                     claimLimit, upgradeMaxLimit, upgradePercentageBasisPoints, upgradePrice,
-                    upgradeMaximumReached, upgradeConfigurationValid, visitorBuy, visitorSell, members, invites);
+                    upgradeMaximumReached, upgradeConfigurationValid, members, invites);
         }
 
         @Override
@@ -73,8 +70,6 @@ public record GroupStatePayload(boolean authenticated, GroupType groupType, bool
             buffer.writeLong(Math.max(0L, payload.upgradePrice()));
             buffer.writeBoolean(payload.upgradeMaximumReached());
             buffer.writeBoolean(payload.upgradeConfigurationValid());
-            buffer.writeBoolean(payload.visitorBuyShop());
-            buffer.writeBoolean(payload.visitorSellShop());
             buffer.writeVarInt(payload.members().size());
             for (MemberSummary member : payload.members()) {
                 buffer.writeUUID(member.playerUuid());

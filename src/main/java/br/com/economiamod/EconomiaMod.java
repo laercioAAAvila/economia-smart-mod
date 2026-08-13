@@ -45,7 +45,7 @@ public final class EconomiaMod {
             modEventBus.addListener(ClientBlockEntityRenderers::register);
             NeoForge.EVENT_BUS.addListener(MapClientEvents::onClientTick);
         }
-        NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerAboutToStart);
+        NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerStarting);
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerStopped);
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onPlayerLoggedOut);
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onPlayerLoggedIn);

@@ -229,10 +229,15 @@ V010__create_daily_job_runs.sql
 
 O servidor deverá aplicar migrações antes de liberar o sistema bancário.
 
+Uma migração já aplicada não poderá ser editada. Seu checksum será validado em toda
+inicialização, e qualquer correção de estrutura deverá ser criada em uma nova versão.
+
 Caso uma migração falhe:
 
 - O sistema econômico permanecerá desativado
-- O servidor deverá informar claramente o erro
+- O servidor deverá informar claramente a etapa, o destino seguro do banco, o tipo do
+  erro, SQLState e código SQL quando existirem
 - Nenhuma migração parcial deverá ser considerada concluída
+- Senhas, hashes, salts e dados sensíveis de cartões não poderão aparecer no log
 
 ---

@@ -1,5 +1,6 @@
 package br.com.economiamod.server.location;
 
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
@@ -18,16 +19,17 @@ public final class PlayerLocationRepository {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO economy_player_locations(
-                         id, player_uuid, name, dimension, block_x, block_y, block_z, created_at, updated_at
-                     ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                         id, server_uuid, player_uuid, name, dimension, block_x, block_y, block_z, created_at, updated_at
+                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                      """)) {
             statement.setObject(1, location.id());
-            statement.setObject(2, location.playerUuid());
-            statement.setString(3, location.name());
-            statement.setString(4, location.dimension());
-            statement.setInt(5, location.x());
-            statement.setInt(6, location.y());
-            statement.setInt(7, location.z());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(3, location.playerUuid());
+            statement.setString(4, location.name());
+            statement.setString(5, location.dimension());
+            statement.setInt(6, location.x());
+            statement.setInt(7, location.y());
+            statement.setInt(8, location.z());
             statement.executeUpdate();
         }
         return location;
@@ -38,9 +40,11 @@ public final class PlayerLocationRepository {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      SELECT id, player_uuid, name, dimension, block_x, block_y, block_z
-                       FROM economy_player_locations WHERE player_uuid = ? ORDER BY created_at, name
+                       FROM economy_player_locations
+                      WHERE server_uuid = ? AND player_uuid = ? ORDER BY created_at, name
                      """)) {
-            statement.setObject(1, playerUuid);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, playerUuid);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     locations.add(new PlayerLocation(
@@ -60,7 +64,7 @@ public final class PlayerLocationRepository {
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE economy_player_locations
                         SET name = ?, dimension = ?, block_x = ?, block_y = ?, block_z = ?, updated_at = CURRENT_TIMESTAMP
-                      WHERE id = ? AND player_uuid = ?
+                      WHERE id = ? AND server_uuid = ? AND player_uuid = ?
                      """)) {
             statement.setString(1, name);
             statement.setString(2, dimension);
@@ -68,7 +72,8 @@ public final class PlayerLocationRepository {
             statement.setInt(4, y);
             statement.setInt(5, z);
             statement.setObject(6, locationId);
-            statement.setObject(7, playerUuid);
+            statement.setObject(7, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(8, playerUuid);
             return statement.executeUpdate() == 1;
         }
     }
@@ -76,9 +81,10 @@ public final class PlayerLocationRepository {
     public boolean delete(UUID playerUuid, UUID locationId) throws SQLException {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "DELETE FROM economy_player_locations WHERE id = ? AND player_uuid = ?")) {
+                     "DELETE FROM economy_player_locations WHERE id = ? AND server_uuid = ? AND player_uuid = ?")) {
             statement.setObject(1, locationId);
-            statement.setObject(2, playerUuid);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(3, playerUuid);
             return statement.executeUpdate() == 1;
         }
     }
@@ -87,9 +93,10 @@ public final class PlayerLocationRepository {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      SELECT id, player_uuid, name, dimension, block_x, block_y, block_z
-                       FROM economy_player_locations WHERE id = ?
+                       FROM economy_player_locations WHERE id = ? AND server_uuid = ?
                      """)) {
             statement.setObject(1, locationId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(new PlayerLocation(
                         resultSet.getObject("id", UUID.class), resultSet.getObject("player_uuid", UUID.class),

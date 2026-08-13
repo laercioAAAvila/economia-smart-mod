@@ -30,13 +30,13 @@ public final class GroupManagementStateService {
         if (membership == null) {
             return new GroupStatePayload(authenticated, type, false, null, "", GroupRole.MEMBER,
                     0L, 0L, 0, 0, 0, 0L, true, true,
-                    false, false, List.of(), invites);
+                    List.of(), invites);
         }
         GroupSummary group = repository.group(membership.groupId()).orElse(null);
         if (group == null) {
             return new GroupStatePayload(authenticated, type, false, null, "", GroupRole.MEMBER,
                     0L, 0L, 0, 0, 0, 0L, true, true,
-                    false, false, List.of(), invites);
+                    List.of(), invites);
         }
         List<GroupStatePayload.MemberSummary> members = new ArrayList<>();
         for (GroupMemberView member : repository.members(group.id())) {
@@ -47,8 +47,7 @@ public final class GroupManagementStateService {
         return new GroupStatePayload(true, type, true, group.id(), group.name(), membership.role(),
                 balance(group.accountId()), balance(group.supportAccountId()), quote.currentLimit(),
                 quote.maxLimit(), quote.percentageBasisPoints(), quote.price(), quote.maximumReached(),
-                quote.configurationValid(),
-                group.visitorUseBuyShop(), group.visitorUseSellShop(), members, invites);
+                quote.configurationValid(), members, invites);
     }
 
     private long balance(UUID accountId) throws SQLException {

@@ -95,7 +95,7 @@ public final class AdminCommandHandlers {
 
     public int resetDatabase(CommandSourceStack source) {
         try {
-            int migrations = new DatabaseResetService().reset();
+            int migrations = new DatabaseResetService().reset(source.getServer());
             source.sendSuccess(() -> Component.translatable("commands.economia.admin.database.reset.success", migrations), true);
             return 1;
         } catch (IOException | SQLException | RuntimeException exception) {

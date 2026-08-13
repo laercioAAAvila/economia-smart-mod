@@ -2,6 +2,7 @@ package br.com.economiamod.server.claim;
 
 import br.com.economiamod.common.group.GroupType;
 import java.util.UUID;
+import java.util.List;
 
 public record ClaimAnchorMenuState(
         UUID anchorId,
@@ -26,6 +27,11 @@ public record ClaimAnchorMenuState(
         int chunkCount,
         int chunkLimit,
         long nextChunkPrice,
-        boolean canBuyChunk
+        boolean canBuyChunk,
+        long currentTax,
+        long totalTax,
+        int taxCount,
+        int taxPeriodDays,
+        List<PrivatePropertyMemberView> privateMembers
 ) {
 }

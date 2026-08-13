@@ -10,8 +10,6 @@ public record GroupSummary(
         UUID viceLeaderPlayerUuid,
         UUID accountId,
         UUID supportAccountId,
-        int claimLimit,
-        boolean visitorUseBuyShop,
-        boolean visitorUseSellShop
+        int claimLimit
 ) {
 }

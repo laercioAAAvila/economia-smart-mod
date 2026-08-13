@@ -5,20 +5,17 @@ import br.com.economiamod.common.network.MapDataPayload;
 import net.minecraft.client.Minecraft;
 
 public final class ClientMapDataHandler {
-    private static MapDataPayload latest = new MapDataPayload(java.util.List.of(), java.util.List.of(), false, false,
-            br.com.economiamod.common.group.ChatChannel.GENERAL);
-
     private ClientMapDataHandler() {
     }
 
     public static void handle(MapDataPayload payload) {
-        latest = payload;
         if (Minecraft.getInstance().screen instanceof EconomyMapScreen screen) {
             screen.applyMapData(payload);
         }
     }
 
-    public static MapDataPayload latest() {
-        return latest;
+    public static MapDataPayload empty() {
+        return new MapDataPayload(java.util.List.of(), java.util.List.of(), false, false,
+                br.com.economiamod.common.group.ChatChannel.GENERAL);
     }
 }

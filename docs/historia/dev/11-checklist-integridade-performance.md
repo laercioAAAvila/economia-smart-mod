@@ -12,6 +12,8 @@ Escopo: recuperacao, idempotencia, indices e riscos de performance.
 - [x] Criar indice para busca de operacoes pendentes por estado/data.
 - [x] Usar `requestId` de payload nas chaves de idempotencia de bancada, loja e transferencia do ATM.
 - [x] Manter HikariCP, cache TTL de precos de ouro e indices de performance ja adicionados.
-- [ ] Avaliar execucao async para jobs administrativos pesados.
-- [ ] Avaliar retry visual/feedback quando salvamento de slot falhar por conflito de versao.
-- [ ] Avaliar request id tambem para comandos diretos, caso comandos passem a ser chamados por UI externa.
+- [x] Avaliar execucao async para jobs administrativos pesados; manter no fluxo administrativo
+  serializado enquanto houver acesso ao estado do servidor Minecraft.
+- [x] Tratar conflito de versao de slots com rollback integral, log e feedback de falha, sem
+  retry cego que possa duplicar ou sobrescrever itens.
+- [x] Manter `requestId` nos payloads de UI; comandos diretos atuais nao sao expostos por UI externa.

@@ -5,6 +5,7 @@ import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.GroupType;
 import br.com.economiamod.common.group.TerritoryPermission;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
@@ -85,9 +86,10 @@ public final class GroupService {
                 if (existing != null) {
                     try (PreparedStatement statement = connection.prepareStatement("""
                             DELETE FROM economy_group_members
-                             WHERE player_uuid = ? AND group_type = 'PRIVATE_PROPERTY'
+                             WHERE player_uuid = ? AND group_type = 'PRIVATE_PROPERTY' AND server_uuid = ?
                             """)) {
                         statement.setObject(1, playerUuid);
+                        statement.setObject(2, BankServerIdentityService.INSTANCE.current());
                         statement.executeUpdate();
                     }
                 }
@@ -126,14 +128,16 @@ public final class GroupService {
             }
             try (PreparedStatement statement = connection.prepareStatement("""
                     INSERT INTO economy_group_invites(
-                        id, group_id, group_type, invited_player_uuid, invited_by_player_uuid, status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, 'PENDING', CURRENT_TIMESTAMP)
+                        id, server_uuid, group_id, group_type, invited_player_uuid,
+                        invited_by_player_uuid, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', CURRENT_TIMESTAMP)
                     """)) {
                 statement.setObject(1, UUID.randomUUID());
-                statement.setObject(2, actor.groupId());
-                statement.setString(3, type.name());
-                statement.setObject(4, targetUuid);
-                statement.setObject(5, actorUuid);
+                statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+                statement.setObject(3, actor.groupId());
+                statement.setString(4, type.name());
+                statement.setObject(5, targetUuid);
+                statement.setObject(6, actorUuid);
                 statement.executeUpdate();
             } catch (SQLException exception) {
                 if (isConstraintViolation(exception)) {
@@ -303,26 +307,6 @@ public final class GroupService {
         }
     }
 
-    public GroupOperationResult updateVisitorShopPermissions(UUID leaderUuid, GroupType type,
-                                                              boolean buyShop, boolean sellShop) throws SQLException {
-        GroupMembership leader = repository.membership(leaderUuid, type).orElse(null);
-        if (leader == null || (leader.role() != GroupRole.LEADER && leader.role() != GroupRole.OWNER)) {
-            return GroupOperationResult.denied("not_allowed");
-        }
-        try (Connection connection = EconomyDatabase.getConnection();
-             PreparedStatement statement = connection.prepareStatement("""
-                     UPDATE economy_groups
-                        SET visitor_use_buy_shop = ?, visitor_use_sell_shop = ?, updated_at = CURRENT_TIMESTAMP
-                      WHERE id = ? AND status = 'ACTIVE'
-                     """)) {
-            statement.setBoolean(1, buyShop);
-            statement.setBoolean(2, sellShop);
-            statement.setObject(3, leader.groupId());
-            statement.executeUpdate();
-        }
-        return GroupOperationResult.success(leader.groupId());
-    }
-
     public GroupOperationResult close(UUID actorUuid, UUID requestedGroupId, GroupType type, boolean authorizedAdministrator) throws SQLException {
         GroupMembership actor = repository.membership(actorUuid, type).orElse(null);
         if (!authorizedAdministrator && (actor == null || (actor.role() != GroupRole.LEADER && actor.role() != GroupRole.OWNER))) {
@@ -336,6 +320,10 @@ public final class GroupService {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
+                if (!activeGroupExists(connection, groupId, type)) {
+                    connection.rollback();
+                    return GroupOperationResult.denied("group_required");
+                }
                 if (hasActiveTerritories(connection, groupId)) {
                     connection.rollback();
                     return GroupOperationResult.denied("active_territories");
@@ -344,34 +332,40 @@ public final class GroupService {
                     connection.rollback();
                     return GroupOperationResult.denied("balance_destination_required");
                 }
-                try (PreparedStatement statement = connection.prepareStatement("DELETE FROM economy_claims WHERE group_id = ?")) {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM economy_claims WHERE group_id = ? AND server_uuid = ?")) {
                     statement.setObject(1, groupId);
+                    statement.setObject(2, BankServerIdentityService.INSTANCE.current());
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
                         UPDATE economy_claim_anchors SET active = FALSE, removed_at = CURRENT_TIMESTAMP
-                         WHERE group_id = ? AND removed_at IS NULL
+                         WHERE group_id = ? AND server_uuid = ? AND removed_at IS NULL
                         """)) {
                     statement.setObject(1, groupId);
+                    statement.setObject(2, BankServerIdentityService.INSTANCE.current());
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
                         UPDATE economy_group_invites SET status = 'CANCELLED', responded_at = CURRENT_TIMESTAMP
-                         WHERE group_id = ? AND status = 'PENDING'
+                         WHERE group_id = ? AND server_uuid = ? AND status = 'PENDING'
                         """)) {
                     statement.setObject(1, groupId);
+                    statement.setObject(2, BankServerIdentityService.INSTANCE.current());
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "DELETE FROM economy_group_members WHERE group_id = ?")) {
+                        "DELETE FROM economy_group_members WHERE group_id = ? AND server_uuid = ?")) {
                     statement.setObject(1, groupId);
+                    statement.setObject(2, BankServerIdentityService.INSTANCE.current());
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
                         UPDATE economy_groups SET status = 'CLOSED', closed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-                         WHERE id = ? AND status = 'ACTIVE'
+                         WHERE id = ? AND server_uuid = ? AND status = 'ACTIVE'
                         """)) {
                     statement.setObject(1, groupId);
+                    statement.setObject(2, BankServerIdentityService.INSTANCE.current());
                     statement.executeUpdate();
                 }
                 connection.commit();
@@ -398,9 +392,10 @@ public final class GroupService {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT 1 FROM economy_groups g
                 JOIN economy_accounts a ON a.id = g.account_id OR a.id = g.support_account_id
-                WHERE g.id = ? AND a.balance <> 0 LIMIT 1
+                WHERE g.id = ? AND g.server_uuid = ? AND a.balance <> 0 LIMIT 1
                 """)) {
             statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -409,9 +404,26 @@ public final class GroupService {
 
     private boolean hasActiveTerritories(Connection connection, UUID groupId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT 1 FROM economy_claim_territories WHERE group_id = ? LIMIT 1
+                SELECT 1 FROM economy_claim_territories
+                 WHERE group_id = ? AND server_uuid = ? LIMIT 1
                 """)) {
             statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        }
+    }
+
+    private boolean activeGroupExists(Connection connection, UUID groupId, GroupType type) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT 1 FROM economy_groups
+                 WHERE id = ? AND server_uuid = ? AND group_type = ? AND status = 'ACTIVE'
+                 FOR UPDATE
+                """)) {
+            statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, type.name());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -426,18 +438,19 @@ public final class GroupService {
                              UUID accountId, UUID supportAccountId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO economy_groups(
-                    id, group_type, name, normalized_name, leader_player_uuid, vice_leader_player_uuid,
+                    id, server_uuid, group_type, name, normalized_name, leader_player_uuid, vice_leader_player_uuid,
                     account_id, support_account_id, claim_limit, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """)) {
             statement.setObject(1, groupId);
-            statement.setString(2, type.name());
-            statement.setString(3, name);
-            statement.setString(4, normalize(name));
-            statement.setObject(5, leaderUuid);
-            statement.setObject(6, accountId);
-            statement.setObject(7, supportAccountId);
-            statement.setInt(8, EconomyServerConfig.CLAIM_MIN_CHUNKS.get());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, type.name());
+            statement.setString(4, name);
+            statement.setString(5, normalize(name));
+            statement.setObject(6, leaderUuid);
+            statement.setObject(7, accountId);
+            statement.setObject(8, supportAccountId);
+            statement.setInt(9, EconomyServerConfig.CLAIM_MIN_CHUNKS.get());
             statement.executeUpdate();
         }
     }
@@ -446,16 +459,17 @@ public final class GroupService {
         UUID id = UUID.randomUUID();
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO economy_accounts(
-                    id, player_uuid, username, username_normalized, password_hash, password_salt,
+                    id, server_uuid, player_uuid, username, username_normalized, password_hash, password_salt,
                     password_algorithm, account_type, status, balance, configured_credit_limit,
                     credit_principal_outstanding, credit_interest_outstanding, created_at, updated_at,
                     last_login_at, version
-                ) VALUES (?, NULL, ?, NULL, NULL, NULL, NULL, ?, 'ACTIVE', 0, 0, 0, 0,
+                ) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, NULL, ?, 'ACTIVE', 0, 0, 0, 0,
                           CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, NULL, 0)
                 """)) {
             statement.setObject(1, id);
-            statement.setString(2, displayName);
-            statement.setString(3, accountType.name());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, displayName);
+            statement.setString(4, accountType.name());
             statement.executeUpdate();
         }
         return id;
@@ -465,16 +479,17 @@ public final class GroupService {
                               GroupRole role, int permissionMask, long activeMillis) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO economy_group_members(
-                    group_id, group_type, player_uuid, role, permission_mask,
+                    group_id, server_uuid, group_type, player_uuid, role, permission_mask,
                     last_active_millis, joined_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """)) {
             statement.setObject(1, groupId);
-            statement.setString(2, type.name());
-            statement.setObject(3, playerUuid);
-            statement.setString(4, role.name());
-            statement.setInt(5, permissionMask);
-            statement.setLong(6, Math.max(0L, activeMillis));
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, type.name());
+            statement.setObject(4, playerUuid);
+            statement.setString(5, role.name());
+            statement.setInt(6, permissionMask);
+            statement.setLong(7, Math.max(0L, activeMillis));
             statement.executeUpdate();
         }
     }
@@ -482,10 +497,12 @@ public final class GroupService {
     private Invite lockInvite(Connection connection, UUID inviteId, UUID playerUuid) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT group_id, group_type FROM economy_group_invites
-                 WHERE id = ? AND invited_player_uuid = ? AND status = 'PENDING' FOR UPDATE
+                 WHERE id = ? AND invited_player_uuid = ? AND server_uuid = ?
+                   AND status = 'PENDING' FOR UPDATE
                 """)) {
             statement.setObject(1, inviteId);
             statement.setObject(2, playerUuid);
+            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? new Invite(resultSet.getObject("group_id", UUID.class), GroupType.valueOf(resultSet.getString("group_type"))) : null;
             }

@@ -2,6 +2,7 @@ package br.com.economiamod.server.claim;
 
 import br.com.economiamod.common.claim.ClaimRecord;
 import br.com.economiamod.common.group.GroupType;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -25,11 +26,12 @@ public final class ClaimRepository {
                        c.dimension, c.chunk_x, c.chunk_z
                   FROM economy_claims c
                   LEFT JOIN economy_claim_territories t ON t.id = c.territory_id
-                 WHERE c.dimension = ? AND c.chunk_x = ? AND c.chunk_z = ?
+                 WHERE c.server_uuid = ? AND c.dimension = ? AND c.chunk_x = ? AND c.chunk_z = ?
                 """)) {
-            statement.setString(1, dimension);
-            statement.setInt(2, chunkX);
-            statement.setInt(3, chunkZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setString(2, dimension);
+            statement.setInt(3, chunkX);
+            statement.setInt(4, chunkZ);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(readClaim(resultSet)) : Optional.empty();
             }
@@ -45,13 +47,15 @@ public final class ClaimRepository {
                             COALESCE(t.anchor_paid_until_millis, 0) anchor_paid_until_millis
                        FROM economy_claim_anchors a
                        LEFT JOIN economy_claim_territories t ON t.id = a.territory_id
-                      WHERE a.dimension = ? AND a.block_x = ? AND a.block_y = ? AND a.block_z = ?
+                      WHERE a.server_uuid = ? AND a.dimension = ?
+                        AND a.block_x = ? AND a.block_y = ? AND a.block_z = ?
                         AND a.removed_at IS NULL
                      """)) {
-            statement.setString(1, dimension);
-            statement.setInt(2, blockX);
-            statement.setInt(3, blockY);
-            statement.setInt(4, blockZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setString(2, dimension);
+            statement.setInt(3, blockX);
+            statement.setInt(4, blockY);
+            statement.setInt(5, blockZ);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(readAnchor(resultSet)) : Optional.empty();
             }
@@ -67,9 +71,10 @@ public final class ClaimRepository {
                             COALESCE(t.anchor_paid_until_millis, 0) anchor_paid_until_millis
                        FROM economy_claim_anchors a
                        LEFT JOIN economy_claim_territories t ON t.id = a.territory_id
-                      WHERE a.id = ? AND a.removed_at IS NULL
+                      WHERE a.id = ? AND a.server_uuid = ? AND a.removed_at IS NULL
                      """)) {
             statement.setObject(1, anchorId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(readAnchor(resultSet)) : Optional.empty();
             }
@@ -82,10 +87,11 @@ public final class ClaimRepository {
                 SELECT c.id, c.territory_id, c.group_id, t.owner_player_uuid, c.group_type,
                        c.dimension, c.chunk_x, c.chunk_z
                   FROM economy_claims c LEFT JOIN economy_claim_territories t ON t.id = c.territory_id
-                 WHERE c.group_id = ? AND c.dimension = ?
+                 WHERE c.group_id = ? AND c.dimension = ? AND c.server_uuid = ?
                 """)) {
             statement.setObject(1, groupId);
             statement.setString(2, dimension);
+            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     claims.add(readClaim(resultSet));
@@ -101,9 +107,10 @@ public final class ClaimRepository {
                 SELECT c.id, c.territory_id, c.group_id, t.owner_player_uuid, c.group_type,
                        c.dimension, c.chunk_x, c.chunk_z
                   FROM economy_claims c LEFT JOIN economy_claim_territories t ON t.id = c.territory_id
-                 WHERE c.group_id = ?
+                 WHERE c.group_id = ? AND c.server_uuid = ?
                 """)) {
             statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     claims.add(readClaim(resultSet));
@@ -120,16 +127,17 @@ public final class ClaimRepository {
         }
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT 1 FROM economy_claims c
-                 WHERE c.group_id = ? AND c.dimension = ?
+                 WHERE c.group_id = ? AND c.server_uuid = ? AND c.dimension = ?
                    AND ABS(chunk_x - ?) <= ? AND ABS(chunk_z - ?) <= ?
                  LIMIT 1
                 """)) {
             statement.setObject(1, groupId);
-            statement.setString(2, dimension);
-            statement.setInt(3, chunkX);
-            statement.setInt(4, distance);
-            statement.setInt(5, chunkZ);
-            statement.setInt(6, distance);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, dimension);
+            statement.setInt(4, chunkX);
+            statement.setInt(5, distance);
+            statement.setInt(6, chunkZ);
+            statement.setInt(7, distance);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -145,10 +153,12 @@ public final class ClaimRepository {
                        COALESCE(t.anchor_paid_until_millis, 0) anchor_paid_until_millis
                   FROM economy_claim_anchors a
                   LEFT JOIN economy_claim_territories t ON t.id = a.territory_id
-                 WHERE a.group_id = ? AND a.dimension = ? AND a.active = TRUE AND a.removed_at IS NULL
+                 WHERE a.group_id = ? AND a.server_uuid = ? AND a.dimension = ?
+                   AND a.active = TRUE AND a.removed_at IS NULL
                 """)) {
             statement.setObject(1, groupId);
-            statement.setString(2, dimension);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, dimension);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     anchors.add(readAnchor(resultSet));
@@ -160,8 +170,9 @@ public final class ClaimRepository {
 
     public int claimCount(Connection connection, UUID groupId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT COUNT(*) FROM economy_claims WHERE group_id = ?")) {
+                "SELECT COUNT(*) FROM economy_claims WHERE group_id = ? AND server_uuid = ?")) {
             statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 resultSet.next();
                 return resultSet.getInt(1);
@@ -182,17 +193,19 @@ public final class ClaimRepository {
                      SELECT c.id, c.territory_id, c.group_id, t.owner_player_uuid, c.group_type,
                             c.dimension, c.chunk_x, c.chunk_z
                       FROM economy_claims c LEFT JOIN economy_claim_territories t ON t.id = c.territory_id
-                      WHERE c.dimension = ? AND c.chunk_x BETWEEN ? AND ? AND c.chunk_z BETWEEN ? AND ?
+                      WHERE c.server_uuid = ? AND c.dimension = ?
+                        AND c.chunk_x BETWEEN ? AND ? AND c.chunk_z BETWEEN ? AND ?
                       ORDER BY ABS(c.chunk_x - ?) + ABS(c.chunk_z - ?), c.created_at
                       LIMIT 512
                      """)) {
-            statement.setString(1, dimension);
-            statement.setInt(2, centerChunkX - radius);
-            statement.setInt(3, centerChunkX + radius);
-            statement.setInt(4, centerChunkZ - radius);
-            statement.setInt(5, centerChunkZ + radius);
-            statement.setInt(6, centerChunkX);
-            statement.setInt(7, centerChunkZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setString(2, dimension);
+            statement.setInt(3, centerChunkX - radius);
+            statement.setInt(4, centerChunkX + radius);
+            statement.setInt(5, centerChunkZ - radius);
+            statement.setInt(6, centerChunkZ + radius);
+            statement.setInt(7, centerChunkX);
+            statement.setInt(8, centerChunkZ);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     claims.add(readClaim(resultSet));
@@ -208,16 +221,17 @@ public final class ClaimRepository {
         }
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT 1 FROM economy_claims
-                 WHERE group_id <> ? AND dimension = ?
+                 WHERE server_uuid = ? AND group_id <> ? AND dimension = ?
                    AND ABS(chunk_x - ?) <= ? AND ABS(chunk_z - ?) <= ?
                  LIMIT 1
                 """)) {
-            statement.setObject(1, groupId);
-            statement.setString(2, dimension);
-            statement.setInt(3, chunkX);
-            statement.setInt(4, distance);
-            statement.setInt(5, chunkZ);
-            statement.setInt(6, distance);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, groupId);
+            statement.setString(3, dimension);
+            statement.setInt(4, chunkX);
+            statement.setInt(5, distance);
+            statement.setInt(6, chunkZ);
+            statement.setInt(7, distance);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }

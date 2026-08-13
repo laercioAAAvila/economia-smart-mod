@@ -16,7 +16,10 @@ Uma conta de jogador pertence à combinação:
 
 O nome atual do perfil Minecraft também é salvo para suporte e atualização cadastral, mas não substitui o UUID do jogador.
 
-Cada mundo ou servidor gera automaticamente seu `serverUuid` na configuração do mod. Servidores diferentes que usam o mesmo banco devem manter UUIDs diferentes. Copiar intencionalmente o mesmo `serverUuid` faz os ambientes compartilharem o mesmo escopo bancário.
+Cada mundo ou servidor gera automaticamente seu `serverUuid` dentro dos dados salvos do
+próprio mundo. O valor permanece estável enquanto o save existir e não depende de uma
+configuração global. Ao apagar e recriar um mundo, um novo UUID é gerado; assim, ambientes
+que usam o mesmo PostgreSQL não compartilham contas, grupos ou claims por acidente.
 
 ## 3. Regras funcionais
 
@@ -57,7 +60,9 @@ Fluxos antigos que conhecem apenas o UUID do jogador usam como conta padrão a c
 
 ## 4. Migração e compatibilidade
 
-- Contas existentes recebem o UUID do primeiro servidor que iniciar após a migração.
+- Contas legadas já associadas a um UUID continuam preservadas nesse escopo.
+- Registros de mundo que não puderem ser associados com segurança não são adotados por um
+  mundo novo, evitando herança de contas ou claims após recriar o save.
 - Nenhum saldo, senha, cartão ou número de conta é recriado durante a adoção.
 - A exclusão administrativa é limitada ao nome bancário no servidor atual e não remove dados das outras contas do jogador.
 

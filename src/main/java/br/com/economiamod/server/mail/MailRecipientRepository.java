@@ -1,6 +1,7 @@
 package br.com.economiamod.server.mail;
 
 import br.com.economiamod.common.block.CommercialBlockType;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -24,6 +25,7 @@ public final class MailRecipientRepository {
                   JOIN economy_commercial_blocks destination
                     ON destination.id = recipient.destination_block_id
                  WHERE recipient.origin_block_id = ?
+                   AND destination.server_uuid = ?
                    AND destination.block_type = ?
                    AND destination.status = 'ACTIVE'
                  ORDER BY destination.owner_name, destination.custom_name, destination.block_x, destination.block_z
@@ -31,7 +33,8 @@ public final class MailRecipientRepository {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, originBlockId);
-            statement.setString(2, CommercialBlockType.MAIL.name());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, CommercialBlockType.MAIL.name());
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<MailRecipientRecord> recipients = new ArrayList<>();
                 while (resultSet.next()) {

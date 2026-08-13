@@ -66,7 +66,8 @@ territórios do mesmo clã ficam isolados para configuração posterior.
 - Clã: líder ou vice coloca a âncora; somente o líder ativa, expande, reduz ou quebra.
 - Propriedade Privada: qualquer jogador coloca a âncora pendente; quem confirma torna-se proprietário e passa a controlar o território.
 - O chunk da âncora conta no limite e não pode ser removido diretamente pelo mapa.
-- A expansão é iniciada pelo botão `Comprar chunk` da âncora, usa seleção no mapa e gera boleto pelo preço do chunk escolhido.
+- A expansão é iniciada pelo botão `Comprar chunk` da âncora, usa seleção e confirmação
+  no mapa e debita o preço do cartão autenticado, sem gerar boleto.
 - O mapa comum remove chunks permitidos, mas não adiciona chunks gratuitamente.
 - Expansão aceita apenas vizinhos ortogonais.
 - Remover chunk ou âncora recalcula componentes e elimina partes sem âncora.
@@ -145,6 +146,8 @@ T | T | T                 T | T | T
 - Voltar preserva a sessão e retorna um nível da navegação.
 - Sair ou `ESC` devolve cartão, encerra a sessão e fecha a interface.
 - A autenticação dos blocos de gerenciamento usa cartão antes de liberar ações.
+- O Bloco de Claim também exige cartão em toda abertura; a autenticação não sobrevive
+  ao fechamento da interface.
 - Depois da autenticação, o slot e o item do cartão ficam ocultos e inativos; o servidor mantém o item protegido até devolvê-lo no fechamento.
 - Todo slot interativo possui desenho individual compatível com o inventário do Minecraft.
 - Menus exibem somente ações compatíveis com o cargo, mas o servidor sempre revalida.
@@ -157,7 +160,8 @@ Persistir:
 - clãs, cargos, membros, permissões, convites, limites, tesouraria, fundo e visitantes;
 - propriedades privadas por proprietário, membros convidados por terreno, limites, conta e visitantes;
 - claims, territórios, preço e dívida do terreno, blocos-âncora e validade do carregamento de chunk;
-- boletos de terreno, renovação da âncora e venda, incluindo comprador e estado do pagamento;
+- boletos de taxas/âncora, consolidação de taxas e venda, incluindo comprador e estado
+  do pagamento; boletos de terreno antigos permanecem apenas por compatibilidade;
 - localizações pessoais;
 - estado necessário para upgrades e auditoria.
 
@@ -172,6 +176,10 @@ ledger/transações existentes. IDs existentes não são alterados.
 - O item de bloco registrado não preserva dono nem ID comercial ao cair.
 - A remoção de bloco comercial continua derrubando inventário e marcando SQL como `REMOVED`.
 - Explosões, pistões e alterações não originadas por jogador não podem contornar claims ou âncoras.
+- Administrador com nível de permissão `2` pode quebrar a âncora de claim; nesse caso o
+  território e todos os chunks vinculados são removidos.
+- Lojas de compra e venda são públicas para interação, inclusive dentro de claims, mas
+  continuam protegidas e removíveis por seu proprietário ou pela administração autorizada.
 
 ## Confirmação, cobrança e transferência
 
@@ -180,6 +188,10 @@ ledger/transações existentes. IDs existentes não são alterados.
 - `Dar Claim` abre pagamento por cartão ou dinheiro; somente a aprovação idempotente cria o território ativo.
 - Cartão exige escolha explícita entre crédito e débito; dinheiro usa somente os slots do menu e não dá troco.
 - O pagamento do boleto da âncora estende `anchor_paid_until_millis`; somente períodos vigentes forçam o chunk.
+- A compra de expansão usa débito no cartão autenticado, após confirmação explícita no
+  mapa, e não cria boleto nem dívida nova.
+- A taxa atual e as taxas pendentes podem ser impressas separadamente ou consolidadas
+  em um boleto `BUNDLE`.
 - A venda é concluída no pagamento idempotente do boleto e altera grupo/proprietário de todos os chunks do território.
 - Dívida do terreno e validade paga da âncora pertencem ao território e não são apagadas na venda.
 

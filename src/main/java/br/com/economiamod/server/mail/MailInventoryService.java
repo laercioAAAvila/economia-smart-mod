@@ -43,7 +43,12 @@ public final class MailInventoryService {
                 updates.add(new SlotUpdate(slot.id(), snapshotMapper.fromStack(container.getItem(slot.slotIndex()), registries), slot.version()));
             }
         }
-        inventoryRepository.updateSlots(updates);
+        boolean[] saved = inventoryRepository.updateSlots(updates);
+        for (boolean slotSaved : saved) {
+            if (!slotSaved) {
+                throw new SQLException("mail inventory changed concurrently");
+            }
+        }
     }
 
     public boolean insertShipment(UUID destinationBlockId, Container shipment, HolderLookup.Provider registries) throws SQLException {

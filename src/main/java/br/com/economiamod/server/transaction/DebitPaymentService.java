@@ -29,8 +29,33 @@ public final class DebitPaymentService {
 
     public DebitPurchaseResult debitPurchase(ItemStack cardStack, UUID destinationAccountId, long amount, UUID playerUuid, String idempotencyKey) throws SQLException {
         requirePositive(amount);
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                DebitPurchaseResult result = debitPurchase(
+                        connection, cardStack, destinationAccountId, amount, playerUuid, idempotencyKey);
+                if (result.type() == DebitPurchaseResultType.COMPLETED
+                        || result.type() == DebitPurchaseResultType.DUPLICATE_COMPLETED) {
+                    connection.commit();
+                } else {
+                    connection.rollback();
+                }
+                return result;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        }
+    }
 
-        CardValidationResult card = cardValidationService.validate(cardStack);
+    public DebitPurchaseResult debitPurchase(Connection connection, ItemStack cardStack,
+                                              UUID destinationAccountId, long amount,
+                                              UUID playerUuid, String idempotencyKey) throws SQLException {
+        requirePositive(amount);
+        CardValidationResult card = cardValidationService.validate(connection, cardStack);
         if (card.type() != CardValidationResultType.VALID) {
             return DebitPurchaseResult.invalidCard();
         }
@@ -40,53 +65,40 @@ public final class DebitPaymentService {
         if (card.accountId().equals(destinationAccountId)) {
             return DebitPurchaseResult.completed();
         }
-
-        try (Connection connection = EconomyDatabase.getConnection()) {
-            boolean previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try {
-                if (transactionWriter.completedTransactionExists(connection, idempotencyKey)) {
-                    connection.commit();
-                    return DebitPurchaseResult.duplicateCompleted();
-                }
-
-                accountRepository.lockAccountsOrdered(connection, card.accountId(), destinationAccountId);
-                DebitDailyLimitState dailyLimit = lockDebitDailyLimit(connection, card.cardId());
-                PaymentAccountSnapshot source = accountRepository.findPaymentAccount(connection, card.accountId()).orElse(null);
-                PaymentAccountSnapshot destination = accountRepository.findPaymentAccount(connection, destinationAccountId).orElse(null);
-                if (!active(source) || !active(destination)) {
-                    connection.rollback();
-                    return DebitPurchaseResult.inactiveAccount();
-                }
-
-                long available = CreditMath.availableBalance(source.balance(), source.principalOutstanding(), source.interestOutstanding());
-                if (available < amount) {
-                    connection.rollback();
-                    return DebitPurchaseResult.insufficientBalance();
-                }
-                if (!dailyLimitAllows(dailyLimit, amount)) {
-                    connection.rollback();
-                    return DebitPurchaseResult.dailyLimitReached();
-                }
-
-                UUID transactionId = UUID.randomUUID();
-                long sourceAfter = source.balance() - amount;
-                long destinationAfter = Math.addExact(destination.balance(), amount);
-                updateDebitDailySpent(connection, card.cardId(), dailyLimit, amount);
-                accountRepository.updateBalance(connection, card.accountId(), sourceAfter);
-                accountRepository.updateBalance(connection, destinationAccountId, destinationAfter);
-                transactionWriter.insertDebitTransaction(connection, transactionId, idempotencyKey, amount, playerUuid, card.accountId(), destinationAccountId, card.cardId());
-                transactionWriter.insertLedger(connection, transactionId, card.accountId(), LedgerEntryType.DEBIT, amount, source.balance(), sourceAfter);
-                transactionWriter.insertLedger(connection, transactionId, destinationAccountId, LedgerEntryType.CREDIT, amount, destination.balance(), destinationAfter);
-                connection.commit();
-                return DebitPurchaseResult.completed();
-            } catch (SQLException | RuntimeException exception) {
-                connection.rollback();
-                throw exception;
-            } finally {
-                connection.setAutoCommit(previousAutoCommit);
-            }
+        if (transactionWriter.completedTransactionExists(connection, idempotencyKey)) {
+            return DebitPurchaseResult.duplicateCompleted();
         }
+
+        accountRepository.lockAccountsOrdered(connection, card.accountId(), destinationAccountId);
+        DebitDailyLimitState dailyLimit = lockDebitDailyLimit(connection, card.cardId());
+        PaymentAccountSnapshot source = accountRepository.findPaymentAccount(connection, card.accountId()).orElse(null);
+        PaymentAccountSnapshot destination = accountRepository.findPaymentAccount(connection, destinationAccountId).orElse(null);
+        if (!active(source) || !active(destination)) {
+            return DebitPurchaseResult.inactiveAccount();
+        }
+
+        long available = CreditMath.availableBalance(
+                source.balance(), source.principalOutstanding(), source.interestOutstanding());
+        if (available < amount) {
+            return DebitPurchaseResult.insufficientBalance();
+        }
+        if (!dailyLimitAllows(dailyLimit, amount)) {
+            return DebitPurchaseResult.dailyLimitReached();
+        }
+
+        UUID transactionId = UUID.randomUUID();
+        long sourceAfter = source.balance() - amount;
+        long destinationAfter = Math.addExact(destination.balance(), amount);
+        updateDebitDailySpent(connection, card.cardId(), dailyLimit, amount);
+        accountRepository.updateBalance(connection, card.accountId(), sourceAfter);
+        accountRepository.updateBalance(connection, destinationAccountId, destinationAfter);
+        transactionWriter.insertDebitTransaction(connection, transactionId, idempotencyKey, amount,
+                playerUuid, card.accountId(), destinationAccountId, card.cardId());
+        transactionWriter.insertLedger(connection, transactionId, card.accountId(),
+                LedgerEntryType.DEBIT, amount, source.balance(), sourceAfter);
+        transactionWriter.insertLedger(connection, transactionId, destinationAccountId,
+                LedgerEntryType.CREDIT, amount, destination.balance(), destinationAfter);
+        return DebitPurchaseResult.completed();
     }
 
     private boolean active(PaymentAccountSnapshot account) {

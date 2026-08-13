@@ -68,8 +68,6 @@ public final class GroupActionPayloadHandler {
                 case RENAME -> result = GROUPS.rename(player.getUUID(), menu.groupType(), payload.text());
                 case CLOSE -> result = GROUPS.close(player.getUUID(), membership == null ? null : membership.groupId(),
                         menu.groupType(), false);
-                case SET_VISITOR_SHOPS -> result = GROUPS.updateVisitorShopPermissions(
-                        player.getUUID(), menu.groupType(), payload.firstFlag(), payload.secondFlag());
                 case DEPOSIT -> {
                     if (membership != null) {
                         BANKING.deposit(player.getUUID(), membership.groupId(), payload.firstFlag(), payload.amount(),

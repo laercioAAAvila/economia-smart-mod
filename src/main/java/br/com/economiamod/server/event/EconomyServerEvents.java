@@ -11,6 +11,7 @@ import br.com.economiamod.server.group.ClanLeadershipService;
 import br.com.economiamod.server.group.GroupChatService;
 import br.com.economiamod.server.group.ClaimLimitUpgradeService;
 import br.com.economiamod.server.claim.ClaimAnchorChunkLoaderService;
+import br.com.economiamod.server.claim.ClaimPurchaseSessionService;
 import net.neoforged.neoforge.event.ServerChatEvent;
 import br.com.economiamod.server.operation.OperationRecoveryResult;
 import br.com.economiamod.server.operation.OperationRecoveryService;
@@ -27,7 +28,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
-import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
@@ -37,18 +38,27 @@ public final class EconomyServerEvents {
     private EconomyServerEvents() {
     }
 
-    public static void onServerAboutToStart(ServerAboutToStartEvent event) {
+    public static void onServerStarting(ServerStartingEvent event) {
         int knownMigrations = MigrationCatalog.all().size();
         EconomyDatabaseState.initializing(knownMigrations);
+        DatabaseSettings databaseSettings = null;
+        String initializationStage = "carregamento_das_migracoes";
 
         try {
             List<VerifiedMigration> verifiedMigrations = new MigrationCatalogVerifier(new MigrationResourceLoader()).verifyCatalog();
-            DatabaseSettings databaseSettings = DatabaseSettings.fromConfig();
+            initializationStage = "leitura_da_configuracao";
+            databaseSettings = DatabaseSettings.fromConfig();
+            initializationStage = "conexao_com_o_banco";
             EconomyDatabase.open(databaseSettings);
+            initializationStage = "aplicacao_das_migracoes";
             new SqlMigrationExecutor(databaseSettings).apply(verifiedMigrations);
-            BankServerIdentityService.INSTANCE.initialize();
+            initializationStage = "identidade_do_servidor_bancario";
+            BankServerIdentityService.INSTANCE.initialize(event.getServer());
+            initializationStage = "inicializacao_das_contas_do_sistema";
             new SystemAccountInitializer().initialize();
+            initializationStage = "inicializacao_da_reserva_de_ouro";
             new GoldReserveService().initialize();
+            initializationStage = "inicializacao_dos_claims";
             new ClaimLimitUpgradeService().normalizeAll();
             ServerActiveClockService.INSTANCE.start();
             new ClanLeadershipService().process(ServerActiveClockService.INSTANCE.currentMillis());
@@ -58,15 +68,44 @@ public final class EconomyServerEvents {
             EconomiaMod.LOGGER.info("Economia Mod conectou ao SQL e aplicou/verificou {} migracoes.", verifiedMigrations.size());
         } catch (IOException exception) {
             EconomyDatabaseState.unavailable("Falha ao carregar migracoes SQL: " + exception.getMessage(), knownMigrations);
-            EconomiaMod.LOGGER.error("Falha ao verificar migracoes SQL do Economia Mod.", exception);
-        } catch (SQLException | RuntimeException exception) {
+            EconomiaMod.LOGGER.error(
+                    "Falha ao iniciar persistencia SQL. etapa={}, tipoErro={}, detalhe={}",
+                    initializationStage,
+                    exception.getClass().getSimpleName(),
+                    exception.getMessage(),
+                    exception
+            );
+        } catch (SQLException exception) {
             EconomyDatabaseState.unavailable("Persistencia SQL indisponivel: " + exception.getMessage(), knownMigrations);
             EconomiaMod.LOGGER.warn(
-                    "Persistencia SQL indisponivel. Operacoes financeiras permanecerao bloqueadas: {}",
+                    "Persistencia SQL indisponivel. etapa={}, destino={}, sqlState={}, codigoSql={}, detalhe={}. "
+                            + "Operacoes financeiras permanecerao bloqueadas.",
+                    initializationStage,
+                    safeDatabaseTarget(databaseSettings),
+                    exception.getSQLState(),
+                    exception.getErrorCode(),
+                    exception.getMessage(),
+                    exception
+            );
+        } catch (RuntimeException exception) {
+            EconomyDatabaseState.unavailable("Persistencia SQL indisponivel: " + exception.getMessage(), knownMigrations);
+            EconomiaMod.LOGGER.warn(
+                    "Persistencia SQL indisponivel. etapa={}, destino={}, tipoErro={}, detalhe={}. "
+                            + "Operacoes financeiras permanecerao bloqueadas.",
+                    initializationStage,
+                    safeDatabaseTarget(databaseSettings),
+                    exception.getClass().getSimpleName(),
                     exception.getMessage(),
                     exception
             );
         }
+    }
+
+    private static String safeDatabaseTarget(DatabaseSettings settings) {
+        if (settings == null) {
+            return "nao_configurado";
+        }
+        return "%s:%d/%s".formatted(settings.host(), settings.port(), settings.name());
     }
 
     private static void recoverOperations() throws SQLException {
@@ -86,12 +125,14 @@ public final class EconomyServerEvents {
         ServerActiveClockService.INSTANCE.stop();
         EconomyDatabase.close();
         BankSessionService.INSTANCE.clear();
+        ClaimPurchaseSessionService.INSTANCE.clearAll();
         BankServerIdentityService.INSTANCE.clear();
         EconomyDatabaseState.unavailable("Servidor parado. Persistencia SQL fechada.", MigrationCatalog.all().size());
     }
 
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         BankSessionService.INSTANCE.logout(event.getEntity().getUUID());
+        ClaimPurchaseSessionService.INSTANCE.clear(event.getEntity().getUUID());
         GroupChatService.INSTANCE.logout(event.getEntity().getUUID());
     }
 

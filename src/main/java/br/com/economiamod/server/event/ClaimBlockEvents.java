@@ -53,12 +53,17 @@ public final class ClaimBlockEvents {
             return;
         }
         try {
+            boolean adminOverride = event.getPlayer().createCommandSourceStack().hasPermission(2);
             ClaimOperationResult result = SERVICE.removeAnchor(
                     event.getPlayer().getUUID(), level.dimension().location().toString(),
-                    event.getPos().getX(), event.getPos().getY(), event.getPos().getZ());
+                    event.getPos().getX(), event.getPos().getY(), event.getPos().getZ(), adminOverride);
             if (!result.success()) {
                 event.setCanceled(true);
                 event.getPlayer().displayClientMessage(Component.translatable("claim.economia.error." + result.code()), true);
+            }
+            if (adminOverride && result.success()) {
+                event.getPlayer().displayClientMessage(
+                        Component.translatable("claim.economia.admin_territory_removed"), true);
             }
         } catch (SQLException exception) {
             event.setCanceled(true);

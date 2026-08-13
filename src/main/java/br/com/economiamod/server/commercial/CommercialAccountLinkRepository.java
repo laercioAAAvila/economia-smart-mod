@@ -1,5 +1,6 @@
 package br.com.economiamod.server.commercial;
 
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -14,11 +15,13 @@ public final class CommercialAccountLinkRepository {
                 SELECT linked_account_id, funding_card_id
                   FROM economy_commercial_blocks
                  WHERE id = ?
+                   AND (server_uuid = ? OR server_uuid IS NULL)
                    AND status = 'ACTIVE'
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, commercialBlockId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();

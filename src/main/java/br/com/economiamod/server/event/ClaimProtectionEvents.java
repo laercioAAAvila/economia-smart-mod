@@ -55,15 +55,16 @@ public final class ClaimProtectionEvents {
                 return;
             }
             BlockState state = level.getBlockState(event.getPos());
+            if (state.is(ModBlocks.BUY_SHOP.get()) || state.is(ModBlocks.SELL_SHOP.get())) {
+                return;
+            }
             BlockProtectionPolicy policy = CommercialBlockProtectionPolicy.of(state);
             if (policy == BlockProtectionPolicy.SYSTEM_PROTECTED) {
                 return;
             }
             if (policy == BlockProtectionPolicy.OWNER_PROTECTED) {
                 if (isCommercialOwner(level, event.getPos(), player)
-                        || PERMISSIONS.can(player.getUUID(), claim, TerritoryPermission.USE)
-                        || (state.is(ModBlocks.BUY_SHOP.get()) && PERMISSIONS.visitorCanUseShop(player.getUUID(), claim, true))
-                        || (state.is(ModBlocks.SELL_SHOP.get()) && PERMISSIONS.visitorCanUseShop(player.getUUID(), claim, false))) {
+                        || PERMISSIONS.can(player.getUUID(), claim, TerritoryPermission.USE)) {
                     return;
                 }
                 denyInteraction(event, player);

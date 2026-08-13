@@ -3,6 +3,7 @@ package br.com.economiamod.server.commercial;
 import br.com.economiamod.common.block.CommercialBlockType;
 import br.com.economiamod.server.account.AccountQueryService;
 import br.com.economiamod.server.account.AccountBalanceSummary;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.commercial.inventory.CommercialInventoryRepository;
 import br.com.economiamod.server.commercial.inventory.CommercialInventoryType;
 import br.com.economiamod.server.persistence.EconomyDatabase;
@@ -28,6 +29,7 @@ public final class CommercialBlockSqlService {
         String sql = """
                 INSERT INTO economy_commercial_blocks(
                     id,
+                    server_uuid,
                     block_type,
                     owner_player_uuid,
                     linked_account_id,
@@ -42,9 +44,10 @@ public final class CommercialBlockSqlService {
                     created_at,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO UPDATE
-                    SET block_type = EXCLUDED.block_type,
+                    SET server_uuid = EXCLUDED.server_uuid,
+                        block_type = EXCLUDED.block_type,
                         owner_player_uuid = EXCLUDED.owner_player_uuid,
                         linked_account_id = EXCLUDED.linked_account_id,
                         owner_name = EXCLUDED.owner_name,
@@ -74,18 +77,19 @@ public final class CommercialBlockSqlService {
         }
 
         try (Connection connection = EconomyDatabase.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, commercialBlockId);
-            statement.setString(2, blockType.name());
-            statement.setObject(3, ownerPlayerUuid);
-            statement.setObject(4, linkedAccountId);
-            statement.setString(5, ownerName);
-            statement.setString(6, ownerAccountNumber);
-            statement.setObject(7, placedByPlayerUuid);
-            statement.setString(8, dimension.toString());
-            statement.setInt(9, pos.getX());
-            statement.setInt(10, pos.getY());
-            statement.setInt(11, pos.getZ());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, blockType.name());
+            statement.setObject(4, ownerPlayerUuid);
+            statement.setObject(5, linkedAccountId);
+            statement.setString(6, ownerName);
+            statement.setString(7, ownerAccountNumber);
+            statement.setObject(8, placedByPlayerUuid);
+            statement.setString(9, dimension.toString());
+            statement.setInt(10, pos.getX());
+            statement.setInt(11, pos.getY());
+            statement.setInt(12, pos.getZ());
             statement.executeUpdate();
         }
 
@@ -99,12 +103,14 @@ public final class CommercialBlockSqlService {
                        updated_at = CURRENT_TIMESTAMP,
                        removed_at = CURRENT_TIMESTAMP
                  WHERE id = ?
+                   AND (server_uuid = ? OR server_uuid IS NULL)
                    AND status = 'ACTIVE'
                 """;
 
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, commercialBlockId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             statement.executeUpdate();
         }
     }

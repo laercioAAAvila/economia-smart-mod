@@ -1,6 +1,7 @@
 package br.com.economiamod.server.mail;
 
 import br.com.economiamod.common.block.CommercialBlockType;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -18,13 +19,15 @@ public final class MailBlockRepository {
                        custom_name, dimension, block_x, block_y, block_z
                   FROM economy_commercial_blocks
                  WHERE id = ?
+                   AND (server_uuid = ? OR server_uuid IS NULL)
                    AND block_type = ?
                    AND status = 'ACTIVE'
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, blockId);
-            statement.setString(2, CommercialBlockType.MAIL.name());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, CommercialBlockType.MAIL.name());
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? Optional.of(read(resultSet)) : Optional.empty();
             }
@@ -34,16 +37,19 @@ public final class MailBlockRepository {
     public void rename(UUID blockId, String name) throws SQLException {
         String sql = """
                 UPDATE economy_commercial_blocks
-                   SET custom_name = ?, updated_at = CURRENT_TIMESTAMP
+                   SET custom_name = ?, server_uuid = ?, updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?
+                   AND (server_uuid = ? OR server_uuid IS NULL)
                    AND block_type = ?
                    AND status = 'ACTIVE'
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, sanitize(name));
-            statement.setObject(2, blockId);
-            statement.setString(3, CommercialBlockType.MAIL.name());
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(3, blockId);
+            statement.setObject(4, BankServerIdentityService.INSTANCE.current());
+            statement.setString(5, CommercialBlockType.MAIL.name());
             statement.executeUpdate();
         }
     }
@@ -54,6 +60,7 @@ public final class MailBlockRepository {
                        custom_name, dimension, block_x, block_y, block_z
                   FROM economy_commercial_blocks
                  WHERE block_type = ?
+                   AND server_uuid = ?
                    AND status = 'ACTIVE'
                    AND dimension = ?
                    AND LOWER(custom_name) = LOWER(?)
@@ -62,8 +69,9 @@ public final class MailBlockRepository {
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, CommercialBlockType.MAIL.name());
-            statement.setString(2, dimension);
-            statement.setString(3, sanitize(name));
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setString(3, dimension);
+            statement.setString(4, sanitize(name));
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<MailBlockRecord> records = new ArrayList<>();
                 while (resultSet.next()) {

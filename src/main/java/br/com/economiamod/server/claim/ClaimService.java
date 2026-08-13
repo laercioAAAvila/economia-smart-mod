@@ -5,6 +5,7 @@ import br.com.economiamod.common.group.GroupMembership;
 import br.com.economiamod.common.group.GroupRole;
 import br.com.economiamod.common.group.GroupSummary;
 import br.com.economiamod.common.group.GroupType;
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.group.GroupRepository;
 import br.com.economiamod.server.group.GroupService;
@@ -55,20 +56,21 @@ public final class ClaimService {
                 UUID anchorId = UUID.randomUUID();
                 try (PreparedStatement statement = connection.prepareStatement("""
                         INSERT INTO economy_claim_anchors(
-                            id, group_id, group_type, dimension, block_x, block_y, block_z,
+                            id, server_uuid, group_id, group_type, dimension, block_x, block_y, block_z,
                             chunk_x, chunk_z, placed_by_player_uuid, active, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, CURRENT_TIMESTAMP)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, CURRENT_TIMESTAMP)
                         """)) {
                     statement.setObject(1, anchorId);
-                    statement.setObject(2, groupId);
-                    statement.setString(3, type.name());
-                    statement.setString(4, dimension);
-                    statement.setInt(5, blockX);
-                    statement.setInt(6, blockY);
-                    statement.setInt(7, blockZ);
-                    statement.setInt(8, chunkX);
-                    statement.setInt(9, chunkZ);
-                    statement.setObject(10, playerUuid);
+                    statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+                    statement.setObject(3, groupId);
+                    statement.setString(4, type.name());
+                    statement.setString(5, dimension);
+                    statement.setInt(6, blockX);
+                    statement.setInt(7, blockY);
+                    statement.setInt(8, blockZ);
+                    statement.setInt(9, chunkX);
+                    statement.setInt(10, chunkZ);
+                    statement.setObject(11, playerUuid);
                     statement.executeUpdate();
                 }
                 connection.commit();
@@ -84,15 +86,11 @@ public final class ClaimService {
         }
     }
 
-    public ClaimOperationResult activateAnchor(UUID playerUuid, UUID anchorId) throws SQLException {
-        return activateAnchor(playerUuid, anchorId, false);
-    }
-
     public ClaimOperationResult activatePaidAnchor(UUID playerUuid, UUID anchorId) throws SQLException {
-        return activateAnchor(playerUuid, anchorId, true);
+        return activatePaidAnchorInternal(playerUuid, anchorId);
     }
 
-    private ClaimOperationResult activateAnchor(UUID playerUuid, UUID anchorId, boolean paid) throws SQLException {
+    private ClaimOperationResult activatePaidAnchorInternal(UUID playerUuid, UUID anchorId) throws SQLException {
         ClaimAnchorRecord preview = claimRepository.anchorById(anchorId).orElse(null);
         if (preview == null) {
             return ClaimOperationResult.denied("anchor_missing");
@@ -142,8 +140,7 @@ public final class ClaimService {
                 long landPrice = priceService.landPrice(anchor.dimension(), anchor.blockX(), anchor.blockZ());
                 UUID territoryId = UUID.randomUUID();
                 insertTerritory(connection, territoryId, anchor.id(), anchor.groupType(), groupId,
-                        anchor.groupType() == GroupType.PRIVATE_PROPERTY ? playerUuid : null, landPrice,
-                        paid ? 0L : landPrice);
+                        anchor.groupType() == GroupType.PRIVATE_PROPERTY ? playerUuid : null, landPrice, 0L);
                 insertClaim(connection, territoryId, groupId, anchor.groupType(), anchor.dimension(),
                         anchor.chunkX(), anchor.chunkZ(), playerUuid);
                 try (PreparedStatement statement = connection.prepareStatement(
@@ -153,13 +150,8 @@ public final class ClaimService {
                     statement.setObject(3, anchorId);
                     statement.executeUpdate();
                 }
-                UUID resultId = territoryId;
-                if (!paid) {
-                    resultId = insertInvoice(connection, territoryId, "LAND", playerUuid, playerUuid,
-                            null, null, null, landPrice, 0);
-                }
                 connection.commit();
-                return ClaimOperationResult.success(resultId);
+                return ClaimOperationResult.success(territoryId);
             } catch (SQLException | RuntimeException exception) {
                 connection.rollback();
                 throw exception;
@@ -202,67 +194,69 @@ public final class ClaimService {
         }
     }
 
-    public ClaimOperationResult purchaseChunk(UUID playerUuid, UUID anchorId, String dimension,
-                                              int chunkX, int chunkZ) throws SQLException {
-        ClaimAnchorRecord preview = claimRepository.anchorById(anchorId).orElse(null);
-        if (preview == null || !preview.active() || preview.territoryId() == null
-                || !preview.dimension().equals(dimension)
-                || !controlsGroup(playerUuid, preview.groupId())) {
+    ClaimOperationResult purchaseChunk(Connection connection, UUID playerUuid, UUID anchorId,
+                                       String dimension, int chunkX, int chunkZ) throws SQLException {
+        ClaimAnchorRecord anchor = lockAnchor(connection, anchorId);
+        if (anchor == null || !anchor.active() || anchor.territoryId() == null
+                || !anchor.dimension().equals(dimension)
+                || !controlsGroup(playerUuid, anchor.groupId())) {
+            return ClaimOperationResult.denied("owner_required");
+        }
+        if (!lockGroup(connection, anchor.groupId()) || !hasClaimCapacity(connection, anchor.groupId())) {
+            return ClaimOperationResult.denied("claim_limit");
+        }
+        if (claimRepository.claimAt(connection, dimension, chunkX, chunkZ).isPresent()) {
+            return ClaimOperationResult.denied("already_claimed");
+        }
+        if (!adjacentToTerritory(connection, anchor.territoryId(), dimension, chunkX, chunkZ)
+                || claimRepository.otherGroupNear(connection, anchor.groupId(), dimension, chunkX, chunkZ,
+                EconomyServerConfig.CLAIM_EXTERNAL_DISTANCE.get())) {
+            return ClaimOperationResult.denied("not_adjacent_or_too_close");
+        }
+
+        long chunkPrice = priceService.landPrice(dimension, chunkX * 16 + 8, chunkZ * 16 + 8);
+        insertClaim(connection, anchor.territoryId(), anchor.groupId(), anchor.groupType(),
+                dimension, chunkX, chunkZ, playerUuid);
+        addChunkPrice(connection, anchor.territoryId(), chunkPrice);
+        return ClaimOperationResult.success(anchor.territoryId());
+    }
+
+    public ClaimOperationResult validateChunkPurchase(UUID playerUuid, UUID anchorId, String dimension,
+                                                       int chunkX, int chunkZ) throws SQLException {
+        ClaimAnchorRecord anchor = claimRepository.anchorById(anchorId).orElse(null);
+        if (anchor == null || !anchor.active() || anchor.territoryId() == null
+                || !anchor.dimension().equals(dimension) || !controlsGroup(playerUuid, anchor.groupId())) {
             return ClaimOperationResult.denied("owner_required");
         }
         try (Connection connection = EconomyDatabase.getConnection()) {
-            boolean previousAutoCommit = connection.getAutoCommit();
-            connection.setAutoCommit(false);
-            try {
-                ClaimAnchorRecord anchor = lockAnchor(connection, anchorId);
-                if (anchor == null || !anchor.active() || anchor.territoryId() == null
-                        || !anchor.dimension().equals(dimension)
-                        || !controlsGroup(playerUuid, anchor.groupId())) {
-                    connection.rollback();
-                    return ClaimOperationResult.denied("owner_required");
-                }
-                if (!lockGroup(connection, anchor.groupId()) || !hasClaimCapacity(connection, anchor.groupId())) {
-                    connection.rollback();
-                    return ClaimOperationResult.denied("claim_limit");
-                }
-                if (claimRepository.claimAt(connection, dimension, chunkX, chunkZ).isPresent()) {
-                    connection.rollback();
-                    return ClaimOperationResult.denied("already_claimed");
-                }
-                if (!adjacentToTerritory(connection, anchor.territoryId(), dimension, chunkX, chunkZ)
-                        || claimRepository.otherGroupNear(connection, anchor.groupId(), dimension, chunkX, chunkZ,
-                        EconomyServerConfig.CLAIM_EXTERNAL_DISTANCE.get())) {
-                    connection.rollback();
-                    return ClaimOperationResult.denied("not_adjacent_or_too_close");
-                }
-
-                long chunkPrice = priceService.landPrice(dimension, chunkX * 16 + 8, chunkZ * 16 + 8);
-                insertClaim(connection, anchor.territoryId(), anchor.groupId(), anchor.groupType(),
-                        dimension, chunkX, chunkZ, playerUuid);
-                addChunkPriceAndDebt(connection, anchor.territoryId(), chunkPrice);
-                UUID invoiceId = insertInvoice(connection, anchor.territoryId(), "LAND", playerUuid, playerUuid,
-                        null, null, null, chunkPrice, 0);
-                connection.commit();
-                return ClaimOperationResult.success(invoiceId);
-            } catch (SQLException | RuntimeException exception) {
-                connection.rollback();
-                throw exception;
-            } finally {
-                if (!connection.isClosed()) {
-                    connection.setAutoCommit(previousAutoCommit);
-                }
+            if (!hasClaimCapacity(connection, anchor.groupId())) {
+                return ClaimOperationResult.denied("claim_limit");
+            }
+            if (claimRepository.claimAt(connection, dimension, chunkX, chunkZ).isPresent()) {
+                return ClaimOperationResult.denied("already_claimed");
+            }
+            if (!adjacentToTerritory(connection, anchor.territoryId(), dimension, chunkX, chunkZ)
+                    || claimRepository.otherGroupNear(connection, anchor.groupId(), dimension, chunkX, chunkZ,
+                    EconomyServerConfig.CLAIM_EXTERNAL_DISTANCE.get())) {
+                return ClaimOperationResult.denied("not_adjacent_or_too_close");
             }
         }
+        return ClaimOperationResult.success(anchor.territoryId());
     }
 
     public ClaimOperationResult removeAnchor(UUID playerUuid, String dimension, int blockX, int blockY, int blockZ) throws SQLException {
+        return removeAnchor(playerUuid, dimension, blockX, blockY, blockZ, false);
+    }
+
+    public ClaimOperationResult removeAnchor(UUID playerUuid, String dimension, int blockX, int blockY, int blockZ,
+                                             boolean adminOverride) throws SQLException {
         ClaimAnchorRecord anchor = claimRepository.anchorAt(dimension, blockX, blockY, blockZ).orElse(null);
-        if (anchor == null || (anchor.active()
+        if (anchor == null || !adminOverride && (anchor.active()
                 ? !controlsGroup(playerUuid, anchor.groupId())
                 : !playerUuid.equals(anchor.placedByPlayerUuid()))) {
             return ClaimOperationResult.denied("owner_required");
         }
-        if (anchor.active() && anchor.landDebt() > 0L) {
+        if (!adminOverride && anchor.active() && anchor.landDebt() > 0L) {
             return ClaimOperationResult.denied("land_debt");
         }
         try (Connection connection = EconomyDatabase.getConnection()) {
@@ -351,8 +345,9 @@ public final class ClaimService {
 
     private boolean lockGroup(Connection connection, UUID groupId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT 1 FROM economy_groups WHERE id = ? AND status = 'ACTIVE' FOR UPDATE")) {
+                "SELECT 1 FROM economy_groups WHERE id = ? AND server_uuid = ? AND status = 'ACTIVE' FOR UPDATE")) {
             statement.setObject(1, groupId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (var resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -396,10 +391,11 @@ public final class ClaimService {
     private int storedTerritoryCount(Connection connection, GroupType type, UUID groupId,
                                      UUID ownerUuid) throws SQLException {
         String sql = type == GroupType.CLAN
-                ? "SELECT COUNT(*) FROM economy_claim_territories WHERE claim_type = 'CLAN' AND group_id = ?"
-                : "SELECT COUNT(*) FROM economy_claim_territories WHERE claim_type = 'PRIVATE_PROPERTY' AND owner_player_uuid = ?";
+                ? "SELECT COUNT(*) FROM economy_claim_territories WHERE server_uuid = ? AND claim_type = 'CLAN' AND group_id = ?"
+                : "SELECT COUNT(*) FROM economy_claim_territories WHERE server_uuid = ? AND claim_type = 'PRIVATE_PROPERTY' AND owner_player_uuid = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, type == GroupType.CLAN ? groupId : ownerUuid);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, type == GroupType.CLAN ? groupId : ownerUuid);
             try (var resultSet = statement.executeQuery()) {
                 resultSet.next();
                 return resultSet.getInt(1);
@@ -413,14 +409,16 @@ public final class ClaimService {
             return false;
         }
         String sql = ownGroupId == null ? """
-                SELECT 1 FROM economy_claims WHERE dimension = ?
+                SELECT 1 FROM economy_claims WHERE server_uuid = ? AND dimension = ?
                   AND ABS(chunk_x - ?) <= ? AND ABS(chunk_z - ?) <= ? LIMIT 1
                 """ : """
-                SELECT 1 FROM economy_claims WHERE (group_id IS NULL OR group_id <> ?) AND dimension = ?
+                SELECT 1 FROM economy_claims WHERE server_uuid = ?
+                  AND (group_id IS NULL OR group_id <> ?) AND dimension = ?
                   AND ABS(chunk_x - ?) <= ? AND ABS(chunk_z - ?) <= ? LIMIT 1
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
+            statement.setObject(index++, BankServerIdentityService.INSTANCE.current());
             if (ownGroupId != null) {
                 statement.setObject(index++, ownGroupId);
             }
@@ -445,11 +443,13 @@ public final class ClaimService {
     private boolean anchorChunkExists(Connection connection, String dimension, int chunkX, int chunkZ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT 1 FROM economy_claim_anchors
-                 WHERE dimension = ? AND chunk_x = ? AND chunk_z = ? AND removed_at IS NULL LIMIT 1
+                 WHERE server_uuid = ? AND dimension = ? AND chunk_x = ? AND chunk_z = ?
+                   AND removed_at IS NULL LIMIT 1
                 """)) {
-            statement.setString(1, dimension);
-            statement.setInt(2, chunkX);
-            statement.setInt(3, chunkZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setString(2, dimension);
+            statement.setInt(3, chunkX);
+            statement.setInt(4, chunkZ);
             try (var resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -459,13 +459,14 @@ public final class ClaimService {
     private boolean activeAnchorInChunk(Connection connection, UUID groupId, String dimension, int chunkX, int chunkZ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT 1 FROM economy_claim_anchors
-                 WHERE group_id = ? AND dimension = ? AND chunk_x = ? AND chunk_z = ?
+                 WHERE server_uuid = ? AND group_id = ? AND dimension = ? AND chunk_x = ? AND chunk_z = ?
                    AND active = TRUE AND removed_at IS NULL LIMIT 1
                 """)) {
-            statement.setObject(1, groupId);
-            statement.setString(2, dimension);
-            statement.setInt(3, chunkX);
-            statement.setInt(4, chunkZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, groupId);
+            statement.setString(3, dimension);
+            statement.setInt(4, chunkX);
+            statement.setInt(5, chunkZ);
             try (var resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -474,17 +475,18 @@ public final class ClaimService {
 
     private boolean adjacentToGroup(Connection connection, UUID groupId, String dimension, int chunkX, int chunkZ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT 1 FROM economy_claims WHERE group_id = ? AND dimension = ? AND (
+                SELECT 1 FROM economy_claims WHERE server_uuid = ? AND group_id = ? AND dimension = ? AND (
                     (chunk_x = ? AND ABS(chunk_z - ?) = 1) OR
                     (chunk_z = ? AND ABS(chunk_x - ?) = 1)
                 ) LIMIT 1
                 """)) {
-            statement.setObject(1, groupId);
-            statement.setString(2, dimension);
-            statement.setInt(3, chunkX);
-            statement.setInt(4, chunkZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, groupId);
+            statement.setString(3, dimension);
+            statement.setInt(4, chunkX);
             statement.setInt(5, chunkZ);
-            statement.setInt(6, chunkX);
+            statement.setInt(6, chunkZ);
+            statement.setInt(7, chunkX);
             try (var resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
@@ -494,17 +496,18 @@ public final class ClaimService {
     private UUID adjacentTerritory(Connection connection, UUID groupId, String dimension,
                                    int chunkX, int chunkZ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT territory_id FROM economy_claims WHERE group_id = ? AND dimension = ? AND (
+                SELECT territory_id FROM economy_claims WHERE server_uuid = ? AND group_id = ? AND dimension = ? AND (
                     (chunk_x = ? AND ABS(chunk_z - ?) = 1) OR
                     (chunk_z = ? AND ABS(chunk_x - ?) = 1)
                 ) AND territory_id IS NOT NULL LIMIT 1
                 """)) {
-            statement.setObject(1, groupId);
-            statement.setString(2, dimension);
-            statement.setInt(3, chunkX);
-            statement.setInt(4, chunkZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, groupId);
+            statement.setString(3, dimension);
+            statement.setInt(4, chunkX);
             statement.setInt(5, chunkZ);
-            statement.setInt(6, chunkX);
+            statement.setInt(6, chunkZ);
+            statement.setInt(7, chunkX);
             try (var resultSet = statement.executeQuery()) {
                 return resultSet.next() ? resultSet.getObject(1, UUID.class) : null;
             }
@@ -514,34 +517,34 @@ public final class ClaimService {
     private boolean adjacentToTerritory(Connection connection, UUID territoryId, String dimension,
                                         int chunkX, int chunkZ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-                SELECT 1 FROM economy_claims WHERE territory_id = ? AND dimension = ? AND (
+                SELECT 1 FROM economy_claims WHERE server_uuid = ? AND territory_id = ? AND dimension = ? AND (
                     (chunk_x = ? AND ABS(chunk_z - ?) = 1) OR
                     (chunk_z = ? AND ABS(chunk_x - ?) = 1)
                 ) LIMIT 1
                 """)) {
-            statement.setObject(1, territoryId);
-            statement.setString(2, dimension);
-            statement.setInt(3, chunkX);
-            statement.setInt(4, chunkZ);
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(2, territoryId);
+            statement.setString(3, dimension);
+            statement.setInt(4, chunkX);
             statement.setInt(5, chunkZ);
-            statement.setInt(6, chunkX);
+            statement.setInt(6, chunkZ);
+            statement.setInt(7, chunkX);
             try (var resultSet = statement.executeQuery()) {
                 return resultSet.next();
             }
         }
     }
 
-    private void addChunkPriceAndDebt(Connection connection, UUID territoryId, long chunkPrice)
+    private void addChunkPrice(Connection connection, UUID territoryId, long chunkPrice)
             throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE economy_claim_territories
-                   SET land_price = land_price + ?, land_debt = land_debt + ?,
+                   SET land_price = land_price + ?,
                        updated_at = CURRENT_TIMESTAMP
                  WHERE id = ?
                 """)) {
             statement.setLong(1, chunkPrice);
-            statement.setLong(2, chunkPrice);
-            statement.setObject(3, territoryId);
+            statement.setObject(2, territoryId);
             statement.executeUpdate();
         }
     }
@@ -554,9 +557,10 @@ public final class ClaimService {
                        COALESCE(t.anchor_paid_until_millis, 0) anchor_paid_until_millis
                   FROM economy_claim_anchors a
                   LEFT JOIN economy_claim_territories t ON t.id = a.territory_id
-                 WHERE a.id = ? AND a.removed_at IS NULL FOR UPDATE OF a
+                 WHERE a.id = ? AND a.server_uuid = ? AND a.removed_at IS NULL FOR UPDATE OF a
                 """)) {
             statement.setObject(1, anchorId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
             try (var resultSet = statement.executeQuery()) {
                 return resultSet.next() ? new ClaimAnchorRecord(
                         resultSet.getObject("id", UUID.class), resultSet.getObject("territory_id", UUID.class),
@@ -574,18 +578,19 @@ public final class ClaimService {
                              int chunkX, int chunkZ, UUID playerUuid) throws SQLException {
         UUID id = UUID.randomUUID();
         try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO economy_claims(id, territory_id, group_id, group_type, dimension, chunk_x, chunk_z,
+                INSERT INTO economy_claims(id, server_uuid, territory_id, group_id, group_type, dimension, chunk_x, chunk_z,
                                            created_by_player_uuid, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """)) {
             statement.setObject(1, id);
-            statement.setObject(2, territoryId);
-            statement.setObject(3, groupId);
-            statement.setString(4, type.name());
-            statement.setString(5, dimension);
-            statement.setInt(6, chunkX);
-            statement.setInt(7, chunkZ);
-            statement.setObject(8, playerUuid);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(3, territoryId);
+            statement.setObject(4, groupId);
+            statement.setString(5, type.name());
+            statement.setString(6, dimension);
+            statement.setInt(7, chunkX);
+            statement.setInt(8, chunkZ);
+            statement.setObject(9, playerUuid);
             statement.executeUpdate();
         }
         return id;
@@ -595,45 +600,20 @@ public final class ClaimService {
                                  UUID groupId, UUID ownerUuid, long price, long debt) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO economy_claim_territories(
-                    id, anchor_id, claim_type, group_id, owner_player_uuid, land_price, land_debt,
+                    id, server_uuid, anchor_id, claim_type, group_id, owner_player_uuid, land_price, land_debt,
                     anchor_paid_until_millis, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """)) {
             statement.setObject(1, territoryId);
-            statement.setObject(2, anchorId);
-            statement.setString(3, type.name());
-            statement.setObject(4, groupId);
-            statement.setObject(5, ownerUuid);
-            statement.setLong(6, price);
-            statement.setLong(7, debt);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            statement.setObject(3, anchorId);
+            statement.setString(4, type.name());
+            statement.setObject(5, groupId);
+            statement.setObject(6, ownerUuid);
+            statement.setLong(7, price);
+            statement.setLong(8, debt);
             statement.executeUpdate();
         }
-    }
-
-    private UUID insertInvoice(Connection connection, UUID territoryId, String invoiceType,
-                               UUID debtorUuid, UUID issuerUuid, UUID sellerUuid, UUID sellerAccountId,
-                               UUID buyerGroupId, long amount, int days) throws SQLException {
-        UUID id = UUID.randomUUID();
-        try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO economy_claim_invoices(
-                    id, territory_id, invoice_type, debtor_player_uuid, issuer_player_uuid,
-                    seller_player_uuid, seller_account_id, buyer_group_id, amount, minecraft_days,
-                    status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', CURRENT_TIMESTAMP)
-                """)) {
-            statement.setObject(1, id);
-            statement.setObject(2, territoryId);
-            statement.setString(3, invoiceType);
-            statement.setObject(4, debtorUuid);
-            statement.setObject(5, issuerUuid);
-            statement.setObject(6, sellerUuid);
-            statement.setObject(7, sellerAccountId);
-            statement.setObject(8, buyerGroupId);
-            statement.setLong(9, amount);
-            statement.setInt(10, days);
-            statement.executeUpdate();
-        }
-        return id;
     }
 
     private void deleteClaim(Connection connection, UUID claimId) throws SQLException {

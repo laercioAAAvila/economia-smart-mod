@@ -1,5 +1,6 @@
 package br.com.economiamod.server.claim;
 
+import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.group.ServerActiveClockService;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import java.sql.Connection;
@@ -51,10 +52,11 @@ public final class ClaimAnchorChunkLoaderService {
                      SELECT a.dimension, a.chunk_x, a.chunk_z
                        FROM economy_claim_anchors a
                        JOIN economy_claim_territories t ON t.id = a.territory_id
-                      WHERE a.active = TRUE AND a.removed_at IS NULL
+                      WHERE a.server_uuid = ? AND a.active = TRUE AND a.removed_at IS NULL
                         AND t.anchor_paid_until_millis > ?
                      """)) {
-            statement.setLong(1, ServerActiveClockService.INSTANCE.currentMillis());
+            statement.setObject(1, BankServerIdentityService.INSTANCE.current());
+            statement.setLong(2, ServerActiveClockService.INSTANCE.currentMillis());
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     chunks.add(new ForcedChunk(resultSet.getString("dimension"),

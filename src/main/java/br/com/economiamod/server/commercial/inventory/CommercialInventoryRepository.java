@@ -5,6 +5,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -87,19 +88,34 @@ public final class CommercialInventoryRepository {
                    AND version = ?
                 """;
 
-        try (Connection connection = EconomyDatabase.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            for (SlotUpdate update : updates) {
-                bindUpdate(statement, update.item(), update.slotId(), update.expectedVersion());
-                statement.addBatch();
-            }
+        try (Connection connection = EconomyDatabase.getConnection()) {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                for (SlotUpdate update : updates) {
+                    bindUpdate(statement, update.item(), update.slotId(), update.expectedVersion());
+                    statement.addBatch();
+                }
 
-            int[] results = statement.executeBatch();
-            boolean[] saved = new boolean[results.length];
-            for (int index = 0; index < results.length; index++) {
-                saved[index] = results[index] == 1;
+                int[] results = statement.executeBatch();
+                boolean[] saved = new boolean[results.length];
+                boolean allSaved = results.length == updates.size();
+                for (int index = 0; index < results.length; index++) {
+                    saved[index] = results[index] == 1 || results[index] == Statement.SUCCESS_NO_INFO;
+                    allSaved &= saved[index];
+                }
+                if (allSaved) {
+                    connection.commit();
+                    return saved;
+                }
+                connection.rollback();
+                throw new SQLException("commercial inventory changed concurrently", "40001");
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
             }
-            return saved;
         }
     }
 

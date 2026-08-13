@@ -27,9 +27,11 @@
 - [x] Permitir renovação sem ultrapassar o limite configurado.
 - [x] Preservar dias pagos depois da venda.
 
-## Boletos, venda e crédito
+## Boletos, taxas, venda e crédito
 
-- [x] Persistir boletos de terreno, âncora e venda.
+- [x] Persistir boletos de taxa/âncora e venda.
+- [x] Consolidar taxas pendentes em um único boleto `BUNDLE`.
+- [x] Preservar boletos de terreno antigos sem emitir novos na compra de chunk.
 - [x] Permitir pagamento no Caixa Eletrônico.
 - [x] Gerar venda com comprador, preço sugerido e preço editável.
 - [x] Transferir propriedade e dívidas somente após pagamento confirmado.
@@ -40,4 +42,8 @@
 - [x] Implementar telas de informações, âncora e venda com `Voltar` e `ESC`.
 - [x] Manter validações sensíveis no servidor e operações idempotentes.
 - [x] Revisar impactos nos claims, proteções, contas e cartão de crédito.
+- [x] Exigir nova autenticação após cada fechamento do Bloco de Claim.
+- [x] Configurar permissões `USAR`, `COLOCAR` e `REMOVER` por convidado privado.
+- [x] Manter lojas de compra e venda públicas dentro de territórios.
+- [x] Remover território e chunks quando a âncora for quebrada por administrador.
 - [ ] Validar em jogo quando solicitado.

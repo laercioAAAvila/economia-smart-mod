@@ -3,6 +3,10 @@ package br.com.economiamod.server.persistence;
 import br.com.economiamod.server.account.SystemAccountInitializer;
 import br.com.economiamod.server.account.BankServerIdentityService;
 import br.com.economiamod.server.gold.GoldReserveService;
+import br.com.economiamod.server.group.ClaimLimitUpgradeService;
+import br.com.economiamod.server.group.ServerActiveClockService;
+import br.com.economiamod.server.claim.ClaimAnchorChunkLoaderService;
+import br.com.economiamod.server.claim.ClaimPurchaseSessionService;
 import br.com.economiamod.server.persistence.migration.MigrationCatalog;
 import br.com.economiamod.server.persistence.migration.MigrationCatalogVerifier;
 import br.com.economiamod.server.persistence.migration.MigrationResourceLoader;
@@ -14,9 +18,10 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import net.minecraft.server.MinecraftServer;
 
 public final class DatabaseResetService {
-    public int reset() throws IOException, SQLException {
+    public int reset(MinecraftServer server) throws IOException, SQLException {
         DatabaseSettings settings = DatabaseSettings.fromConfig();
         List<VerifiedMigration> migrations = new MigrationCatalogVerifier(new MigrationResourceLoader()).verifyCatalog();
 
@@ -24,10 +29,15 @@ public final class DatabaseResetService {
         EconomyDatabase.open(settings);
         dropEconomyObjects();
         new SqlMigrationExecutor(settings).apply(migrations);
-        BankServerIdentityService.INSTANCE.initialize();
+        BankServerIdentityService.INSTANCE.initialize(server);
         new SystemAccountInitializer().initialize();
         new GoldReserveService().initialize();
+        new ClaimLimitUpgradeService().normalizeAll();
+        ServerActiveClockService.INSTANCE.stop();
+        ServerActiveClockService.INSTANCE.start();
+        ClaimAnchorChunkLoaderService.INSTANCE.refresh(server);
         BankSessionService.INSTANCE.clear();
+        ClaimPurchaseSessionService.INSTANCE.clearAll();
         EconomyDatabaseState.available(migrations.size());
         return migrations.size();
     }
@@ -38,6 +48,7 @@ public final class DatabaseResetService {
             statement.execute("""
                     DROP TABLE IF EXISTS
                         economy_player_locations,
+                        economy_claim_invoice_bundle_items,
                         economy_claim_limit_upgrades,
                         economy_claim_direct_payments,
                         economy_claim_invoices,
