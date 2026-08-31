@@ -12,3 +12,4 @@ runs/
 .env.*
 !.env.example
 /docs/img/
+version
