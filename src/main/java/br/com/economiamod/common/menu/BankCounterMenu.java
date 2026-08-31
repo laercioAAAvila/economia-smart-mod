@@ -16,6 +16,11 @@ import br.com.economiamod.server.gold.GoldDynamicPricingService;
 import br.com.economiamod.server.gold.GoldExchangeResultType;
 import br.com.economiamod.server.gold.GoldExchangeService;
 import br.com.economiamod.server.gold.GoldPriceSnapshot;
+import br.com.economiamod.server.operation.EconomyOperationService;
+import br.com.economiamod.server.operation.EconomyOperationState;
+import br.com.economiamod.server.operation.EconomyOperationType;
+import br.com.economiamod.server.operation.OperationStartResult;
+import br.com.economiamod.server.operation.OperationStartType;
 import java.util.ArrayList;
 import java.util.List;
 import java.sql.SQLException;
@@ -50,6 +55,7 @@ public final class BankCounterMenu extends AbstractContainerMenu {
     private final CashInventoryService cashInventoryService = new CashInventoryService();
     private final GoldExchangeService goldExchangeService = new GoldExchangeService();
     private final GoldDynamicPricingService goldPricingService = new GoldDynamicPricingService();
+    private final EconomyOperationService operationService = new EconomyOperationService();
     private final BlockPos accessPos;
     private final Block expectedBlock;
     private final UUID commercialBlockId;
@@ -215,10 +221,36 @@ public final class BankCounterMenu extends AbstractContainerMenu {
 
         try {
             String requestKey = stableRequestId(requestId);
+            String transactionKey = card == null
+                    ? "bank-counter-cash:" + player.getUUID() + ":" + requestKey
+                    : "bank-counter:" + player.getUUID() + ":" + requestKey;
+            long nuggetUnits = goldInventoryNuggetUnits();
+            String operationKey = "operation:" + transactionKey;
+            String payload = "mode=mint;account=" + (card == null ? "cash" : card.accountId())
+                    + ";nuggetUnits=" + nuggetUnits + ";block=" + commercialBlockId;
+            OperationStartResult start = operationService.begin(operationKey, EconomyOperationType.GOLD_MINT,
+                    player.getUUID(), payload);
+            if (start.type() == OperationStartType.DUPLICATE_COMPLETED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+                return;
+            }
+            if (start.type() != OperationStartType.CREATED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+                return;
+            }
+            if (!operationService.mark(operationKey, EconomyOperationState.ITEMS_RESERVED)) {
+                operationService.markReconciliationRequired(operationKey, "gold mint could not enter reserved state");
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+                return;
+            }
+
             var result = card == null
-                    ? goldExchangeService.mintToCash(player.getUUID(), goldStacks, commercialBlockId, "bank-counter-cash:" + player.getUUID() + ":" + requestKey)
-                    : goldExchangeService.mintToAccount(player.getUUID(), card.accountId(), goldStacks, commercialBlockId, "bank-counter:" + player.getUUID() + ":" + requestKey);
-            if (result.type() == GoldExchangeResultType.COMPLETED || result.type() == GoldExchangeResultType.DUPLICATE_COMPLETED) {
+                    ? goldExchangeService.mintToCash(player.getUUID(), goldStacks, commercialBlockId, transactionKey)
+                    : goldExchangeService.mintToAccount(player.getUUID(), card.accountId(), goldStacks, commercialBlockId, transactionKey);
+            if (result.type() == GoldExchangeResultType.COMPLETED) {
+                if (!operationService.mark(operationKey, EconomyOperationState.SQL_COMMITTED)) {
+                    operationService.markReconciliationRequired(operationKey, "gold mint committed but state transition failed");
+                }
                 if (card == null && result.moneyAmount() > 0L) {
                     BanknoteStackPlan plan = cashInventoryService.buildWithdrawalPlan(result.moneyAmount());
                     cashInventoryService.insert(player, plan);
@@ -228,9 +260,15 @@ public final class BankCounterMenu extends AbstractContainerMenu {
                         goldContainer.setItem(slot, ItemStack.EMPTY);
                     }
                 }
+                operationService.mark(operationKey, EconomyOperationState.ITEMS_DELIVERED);
+                operationService.mark(operationKey, EconomyOperationState.COMPLETED);
                 refreshGoldPricing(player);
                 player.sendSystemMessage(Component.translatable("commands.economia.bank.gold.counter_mint.success", result.moneyAmount()));
+            } else if (result.type() == GoldExchangeResultType.DUPLICATE_COMPLETED) {
+                operationService.markReconciliationRequired(operationKey, "financial transaction already existed");
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
             } else {
+                operationService.mark(operationKey, EconomyOperationState.ROLLED_BACK);
                 player.sendSystemMessage(Component.translatable("commands.economia.bank.gold." + result.type().name().toLowerCase()));
             }
         } catch (SQLException | RuntimeException exception) {
@@ -281,12 +319,42 @@ public final class BankCounterMenu extends AbstractContainerMenu {
         try {
             GoldRedeemUnit redeemUnit = GoldRedeemUnit.byId(unit);
             long goldUnits = Math.multiplyExact((long) amount, redeemUnit.nuggetUnits);
-            var result = goldExchangeService.redeemFromAccount(player.getUUID(), card.accountId(), goldUnits, commercialBlockId, "bank-counter-redeem:" + player.getUUID() + ":" + stableRequestId(requestId));
-            if (result.type() == GoldExchangeResultType.COMPLETED || result.type() == GoldExchangeResultType.DUPLICATE_COMPLETED) {
+            String transactionKey = "bank-counter-redeem:" + player.getUUID() + ":" + stableRequestId(requestId);
+            String operationKey = "operation:" + transactionKey;
+            String payload = "mode=redeem;account=" + card.accountId() + ";amount=" + amount
+                    + ";unit=" + unit + ";nuggetUnits=" + goldUnits + ";block=" + commercialBlockId;
+            OperationStartResult start = operationService.begin(operationKey, EconomyOperationType.GOLD_REDEEM,
+                    player.getUUID(), payload);
+            if (start.type() == OperationStartType.DUPLICATE_COMPLETED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+                return;
+            }
+            if (start.type() != OperationStartType.CREATED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+                return;
+            }
+            if (!operationService.mark(operationKey, EconomyOperationState.ITEMS_RESERVED)) {
+                operationService.markReconciliationRequired(operationKey, "gold redeem could not enter reserved state");
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+                return;
+            }
+
+            var result = goldExchangeService.redeemFromAccount(player.getUUID(), card.accountId(), goldUnits,
+                    commercialBlockId, transactionKey);
+            if (result.type() == GoldExchangeResultType.COMPLETED) {
+                if (!operationService.mark(operationKey, EconomyOperationState.SQL_COMMITTED)) {
+                    operationService.markReconciliationRequired(operationKey, "gold redeem committed but state transition failed");
+                }
                 giveGold(player, amount, redeemUnit.item);
+                operationService.mark(operationKey, EconomyOperationState.ITEMS_DELIVERED);
+                operationService.mark(operationKey, EconomyOperationState.COMPLETED);
                 refreshGoldPricing(player);
                 player.sendSystemMessage(Component.translatable("commands.economia.bank.gold.redeem.success", result.goldNuggetUnits(), result.moneyAmount(), result.balanceAfter()));
+            } else if (result.type() == GoldExchangeResultType.DUPLICATE_COMPLETED) {
+                operationService.markReconciliationRequired(operationKey, "financial transaction already existed");
+                player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
             } else {
+                operationService.mark(operationKey, EconomyOperationState.ROLLED_BACK);
                 refreshGoldPricing(player);
                 player.sendSystemMessage(Component.translatable("commands.economia.bank.gold." + result.type().name().toLowerCase()));
             }

@@ -44,7 +44,9 @@ public final class ClaimDirectPaymentService {
             MenuPaymentResult payment = payments.pay(player, record.method(), card, cash, record.amount(),
                     "Claim", paymentKey(record.id()));
             if (!payment.success()) {
-                deleteUnpaid(record.id());
+                if (!ambiguousPayment(payment)) {
+                    deleteUnpaid(record.id());
+                }
                 return ClaimOperationResult.denied("payment_" + payment.code());
             }
             markPaid(record.id());
@@ -179,6 +181,11 @@ public final class ClaimDirectPaymentService {
 
     private String paymentKey(UUID id) {
         return "claim-direct:" + id;
+    }
+
+    private boolean ambiguousPayment(MenuPaymentResult payment) {
+        return "reconciliation_required".equals(payment.code())
+                || "idempotency_conflict".equals(payment.code());
     }
 
     private record PaymentRecord(UUID id, UUID anchorId, UUID payerUuid, long amount,

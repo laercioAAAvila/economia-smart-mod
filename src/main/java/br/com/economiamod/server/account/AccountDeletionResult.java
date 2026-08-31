@@ -14,14 +14,8 @@ public record AccountDeletionResult(
         return new AccountDeletionResult(AccountDeletionResultType.NOT_FOUND, null, null, null, null, 0);
     }
 
-    public static AccountDeletionResult deleted(AccountDeletionTarget target, int affectedRows) {
-        return new AccountDeletionResult(
-                AccountDeletionResultType.DELETED,
-                target.accountId(),
-                target.playerUuid(),
-                target.username(),
-                target.accountNumber(),
-                affectedRows
-        );
+    public static AccountDeletionResult of(AccountDeletionResultType type, AccountDeletionTarget target, int affectedRows) {
+        return new AccountDeletionResult(type, target.accountId(), target.playerUuid(), target.username(),
+                target.accountNumber(), affectedRows);
     }
 }

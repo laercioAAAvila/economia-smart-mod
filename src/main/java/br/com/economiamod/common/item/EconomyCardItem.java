@@ -15,7 +15,7 @@ public final class EconomyCardItem extends Item {
     }
 
     @Override
-    public void appendHoverText(ItemStack stack, Item.TooltipContext context, List<Component> tooltipComponents, TooltipFlag tooltipFlag) {
+    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltipComponents, TooltipFlag tooltipFlag) {
         cardItemDataService.read(stack)
                 .ifPresent(card -> tooltipComponents.add(Component.translatable("item.economia.card.type." + card.cardType().name().toLowerCase())));
         cardItemDataService.accountNumber(stack)

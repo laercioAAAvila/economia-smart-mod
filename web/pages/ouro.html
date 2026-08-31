@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Cotação do ouro | Economia Smart</title>
+  <link rel="icon" href="../assets/logo.png">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/pages.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside id="sidebar"></aside>
+    <main class="main">
+      <div class="content">
+        <div id="mobileHeader"></div>
+        <header class="topbar">
+          <div><h1>Cotação do ouro</h1><p class="page-description">Veja os valores atuais de pepita, barra e bloco de ouro usados pela economia do servidor.</p></div>
+        </header>
+        <div id="notice" class="notice hidden" role="status"></div>
+        
+<section class="grid gold-prices">
+  <article class="card gold-unit"><span class="gold-unit-name">Pepita de ouro</span><strong id="nugget" class="gold-unit-value">—</strong><span class="muted">Valor atual</span></article>
+  <article class="card gold-unit"><span class="gold-unit-name">Barra de ouro</span><strong id="ingot" class="gold-unit-value">—</strong><span class="muted">Valor atual</span></article>
+  <article class="card gold-unit"><span class="gold-unit-name">Bloco de ouro</span><strong id="block" class="gold-unit-value">—</strong><span class="muted">Valor atual</span></article>
+</section>
+<section class="grid two-columns mt-16">
+  <article class="card"><h2>Mercado</h2><div class="detail-list"><div class="detail"><span>Percentual de compra</span><strong id="buyPercent">—</strong></div><div class="detail"><span>Percentual de venda</span><strong id="sellPercent">—</strong></div><div class="detail"><span>Precificação</span><strong id="pricingMode">—</strong></div></div></article>
+  <article class="card"><h2>Indicadores</h2><div class="detail-list"><div class="detail"><span>Nível de demanda</span><strong id="demandLevel">—</strong></div><div class="detail"><span>Nível de recuperação</span><strong id="idleLevel">—</strong></div></div><p class="input-help mt-14">Os valores são os mesmos calculados pelo sistema de preço dinâmico do mod.</p></article>
+</section>
+
+      </div>
+    </main>
+  </div>
+  <script type="module" src="../js/ouro.js"></script>
+</body>
+</html>

@@ -22,6 +22,11 @@ import br.com.economiamod.server.offer.BankOfferDraft;
 import br.com.economiamod.server.offer.BankOfferReadRepository;
 import br.com.economiamod.server.offer.BankOfferSnapshot;
 import br.com.economiamod.server.offer.BankOfferWriteRepository;
+import br.com.economiamod.server.operation.EconomyOperationService;
+import br.com.economiamod.server.operation.EconomyOperationState;
+import br.com.economiamod.server.operation.EconomyOperationType;
+import br.com.economiamod.server.operation.OperationStartResult;
+import br.com.economiamod.server.operation.OperationStartType;
 import br.com.economiamod.server.player.ItemStackFactory;
 import br.com.economiamod.server.transaction.AccountFinancialService;
 import br.com.economiamod.server.transaction.CardPaymentService;
@@ -89,6 +94,7 @@ public class PlayerShopMenu extends AbstractContainerMenu {
     private final CardValidationService cardValidationService = new CardValidationService(cardItemDataService);
     private final CardPaymentService cardPaymentService = new CardPaymentService(cardValidationService);
     private final AccountFinancialService accountFinancialService = new AccountFinancialService();
+    private final EconomyOperationService operationService = new EconomyOperationService();
     private final BlockPos accessPos;
     private final Block expectedBlock;
     private final UUID commercialBlockId;
@@ -378,7 +384,58 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         }
         int totalQuantity = safeItemCount(operationQuantity, operations);
         long totalPrice = safePrice(operations);
+        String requestToken = stableRequestId(requestId);
+        String operationKey = "shop-buy:" + commercialBlockId + ":" + player.getUUID() + ":" + requestToken;
+        var productSnapshot = snapshotMapper.fromStack(product, registries);
+        String operationPayload = "item=" + productSnapshot.itemId() + ";components=" + productSnapshot.components()
+                + ";quantity=" + totalQuantity + ";price=" + totalPrice + ";credit=" + creditPayment;
+        try {
+            OperationStartResult start = operationService.begin(operationKey, EconomyOperationType.SHOP_BUY,
+                    player.getUUID(), operationPayload);
+            if (start.type() == OperationStartType.DUPLICATE_COMPLETED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.buy_success"));
+                return;
+            }
+            if (start.type() != OperationStartType.CREATED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+                return;
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao registrar operacao de compra da loja.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+            return;
+        }
+        try {
+            if (!operationService.mark(operationKey, EconomyOperationState.ITEMS_RESERVED)) {
+                operationService.markReconciliationRequired(operationKey, "unable to reserve shop purchase before payment");
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+                return;
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao reservar operacao de compra antes do pagamento.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+            return;
+        }
         if (!takePayment(player, requestId, totalPrice, creditPayment)) {
+            try {
+                operationService.mark(operationKey, EconomyOperationState.ROLLED_BACK);
+            } catch (SQLException exception) {
+                EconomiaMod.LOGGER.warn("Falha ao encerrar operacao de compra sem pagamento.", exception);
+            }
+            return;
+        }
+        // Persist cash-reserve mutations immediately after payment. If a later phase fails, the
+        // reconciliation record and the persisted reserve still agree about what the customer paid.
+        saveInventories(player);
+        try {
+            if (!operationService.mark(operationKey, EconomyOperationState.SQL_COMMITTED)) {
+                operationService.markReconciliationRequired(operationKey, "shop payment completed but state transition failed");
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+                return;
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Pagamento da compra concluido, mas a operacao exige reconciliacao.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
             return;
         }
         ItemStack delivered = product.copy();
@@ -389,6 +446,12 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         removeStock(product, totalQuantity);
         saveInventories(player);
         updateStockCount();
+        try {
+            operationService.mark(operationKey, EconomyOperationState.ITEMS_DELIVERED);
+            operationService.mark(operationKey, EconomyOperationState.COMPLETED);
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.error("Compra entregue, mas nao foi possivel finalizar a operacao de auditoria.", exception);
+        }
         if (!hasStock(product, operationQuantity)) {
             setOfferEnabled(false);
         }
@@ -495,15 +558,73 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             return;
         }
         long totalPrice = safePrice(operations);
-        if (!payCustomer(player, requestId, totalPrice)) {
+        String requestToken = stableRequestId(requestId);
+        String operationKey = "shop-sell:" + commercialBlockId + ":" + player.getUUID() + ":" + requestToken;
+        var productSnapshot = snapshotMapper.fromStack(received, registries);
+        String operationPayload = "item=" + productSnapshot.itemId() + ";components=" + productSnapshot.components()
+                + ";quantity=" + totalQuantity + ";price=" + totalPrice;
+        try {
+            OperationStartResult start = operationService.begin(operationKey, EconomyOperationType.SHOP_SELL,
+                    player.getUUID(), operationPayload);
+            if (start.type() == OperationStartType.DUPLICATE_COMPLETED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.sell_success"));
+                return;
+            }
+            if (start.type() != OperationStartType.CREATED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+                return;
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao registrar operacao de venda para a loja.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+            return;
+        }
+
+        // Marca a reserva antes de tocar no inventario. Se houver queda, o recovery exige reconciliacao
+        // em vez de tratar a operacao como nunca iniciada.
+        try {
+            if (!operationService.mark(operationKey, EconomyOperationState.ITEMS_RESERVED)) {
+                player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
+                return;
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.error("Falha ao reservar a operacao antes de mover os itens da loja.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.trade_failed"));
             return;
         }
         removeSellInputItems(reference, totalQuantity);
         insertStock(received);
+        saveInventories(player);
+        if (!payCustomer(player, requestId, totalPrice)) {
+            // Falha conhecida antes de pagamento: devolve o item imediatamente e nao contabiliza a compra da loja.
+            removeStock(received, totalQuantity);
+            ItemStack returned = received.copy();
+            if (!player.getInventory().add(returned)) {
+                player.drop(returned, false);
+            }
+            saveInventories(player);
+            try {
+                operationService.mark(operationKey, EconomyOperationState.ROLLED_BACK);
+            } catch (SQLException exception) {
+                EconomiaMod.LOGGER.warn("Falha ao finalizar rollback da venda para a loja.", exception);
+            }
+            updateStockCount();
+            return;
+        }
+        try {
+            operationService.mark(operationKey, EconomyOperationState.SQL_COMMITTED);
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.error("Pagamento ao jogador confirmado, mas operacao exige reconciliacao.", exception);
+        }
         purchasedQuantity += totalQuantity;
         recordPurchasedQuantity(totalQuantity);
         saveInventories(player);
         updateStockCount();
+        try {
+            operationService.mark(operationKey, EconomyOperationState.COMPLETED);
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.error("Venda concluida, mas nao foi possivel finalizar auditoria da operacao.", exception);
+        }
         if (!buyLimitAllows(operationQuantity) || !canInsertStock(received)) {
             setOfferEnabled(false);
         }
@@ -1408,11 +1529,11 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             String key = "shop-card:" + commercialBlockId + ":" + player.getUUID() + ":" + stableRequestId(requestId);
             if (!creditPayment && card.cardType().hasDebit()) {
                 var debit = cardPaymentService.debitPurchase(cardContainer.getItem(0), ownerAccountId, amount, player.getUUID(), key);
-                return debit.type() == DebitPurchaseResultType.COMPLETED || debit.type() == DebitPurchaseResultType.DUPLICATE_COMPLETED;
+                return debit.type() == DebitPurchaseResultType.COMPLETED;
             }
             if (creditPayment && card.cardType().hasCredit()) {
                 var credit = cardPaymentService.creditPurchase(cardContainer.getItem(0), ownerAccountId, amount, player.getUUID(), "Loja", key);
-                return credit.type() == CreditPurchaseResultType.COMPLETED || credit.type() == CreditPurchaseResultType.DUPLICATE_COMPLETED;
+                return credit.type() == CreditPurchaseResultType.COMPLETED;
             }
             return false;
         } catch (SQLException exception) {
@@ -1437,7 +1558,7 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             }
             String key = keyPrefix + ":" + commercialBlockId + ":" + player.getUUID() + ":" + stableRequestId(requestId);
             var result = accountFinancialService.transfer(player.getUUID(), ownerAccountId, customerAccountId, amount, null, key);
-            return result.type() == FinancialOperationResultType.COMPLETED || result.type() == FinancialOperationResultType.DUPLICATE_COMPLETED;
+            return result.type() == FinancialOperationResultType.COMPLETED;
         } catch (SQLException exception) {
             EconomiaMod.LOGGER.warn("Falha ao pagar cliente online.", exception);
             return false;
@@ -1459,7 +1580,7 @@ public class PlayerShopMenu extends AbstractContainerMenu {
             }
             String key = "shop-card-payout:" + commercialBlockId + ":" + player.getUUID() + ":" + stableRequestId(requestId);
             var result = accountFinancialService.transfer(player.getUUID(), ownerAccountId, card.accountId(), amount, card.cardId(), key);
-            return result.type() == FinancialOperationResultType.COMPLETED || result.type() == FinancialOperationResultType.DUPLICATE_COMPLETED;
+            return result.type() == FinancialOperationResultType.COMPLETED;
         } catch (SQLException exception) {
             EconomiaMod.LOGGER.warn("Falha ao pagar cliente com cartao.", exception);
             return false;

@@ -43,7 +43,7 @@
   "screen.economia.atm.account_credit_limit": "Account limit",
   "screen.economia.atm.card_credit_limit": "Card limit",
   "screen.economia.atm.current_password": "Current password",
-  "screen.economia.atm.password_rule": "Password: 4 to 12 chars",
+  "screen.economia.atm.password_rule": "New passwords: 8 to 64 chars",
   "screen.economia.atm.login_section": "Access",
   "screen.economia.atm.cash_section": "Cash",
   "screen.economia.atm.card_section": "Cards",
@@ -226,7 +226,7 @@
   "commands.economia.account.password.changed": "Password changed.",
   "commands.economia.account.password.invalid": "Current password is invalid.",
   "commands.economia.account.password.invalid_attempts_remaining": "Invalid password. Attempts remaining before the card is blocked: %s.",
-  "commands.economia.account.password.length": "Password must be 4 to 12 characters.",
+  "commands.economia.account.password.length": "New passwords must be 8 to 64 characters.",
   "commands.economia.account.password.not_found": "Account not found.",
   "commands.economia.account.password.inactive_account": "Inactive account.",
   "commands.economia.account.password.recovered": "Password reset.",
@@ -255,6 +255,7 @@
   "commands.economia.atm.operation.insufficient_inventory_space": "No inventory space.",
   "commands.economia.atm.operation.invalid_denomination": "Invalid banknote denomination for this withdrawal.",
   "commands.economia.atm.operation.inactive_account": "Inactive account.",
+  "commands.economia.atm.operation.reconciliation_required": "Operation blocked for safety and marked for administrative reconciliation.",
   "commands.economia.atm.card.success": "Card issued.",
   "commands.economia.atm.card.inactive_account": "Inactive account.",
   "commands.economia.atm.card.card_limit_reached": "Card limit reached.",
@@ -299,6 +300,7 @@
   "commands.economia.atm.transfer.insufficient_balance": "Insufficient balance.",
   "commands.economia.atm.transfer.inactive_account": "Inactive account.",
   "commands.economia.atm.transfer.duplicate_completed": "Transfer already processed.",
+  "commands.economia.atm.transfer.idempotency_conflict": "Repeated request with different data. The transfer was blocked for safety.",
   "commands.economia.atm.invoice.paid": "Invoice paid: $%s. Balance: $%s.",
   "commands.economia.atm.invoice.unavailable": "The invoice is not available for payment yet.",
   "commands.economia.atm.invoice.missing": "Put the account invoice in the invoice slot.",
@@ -589,5 +591,8 @@
   "commands.economia.atm.claim_invoice.insufficient_balance": "Insufficient balance to pay the bill.",
   "commands.economia.atm.claim_invoice.inactive_account": "The account is inactive.",
   "commands.economia.atm.claim_invoice.buyer_territory_limit": "You reached the territory limit.",
-  "screen.economia.group.private_property_claim_first": "Create your first property with the Private Claim Block."
+  "screen.economia.group.private_property_claim_first": "Create your first property with the Private Claim Block.",
+  "screen.economia.atm.web_token": "Web token",
+  "commands.economia.atm.web_token.created": "Web token: %s (valid for %s seconds). Use it once on the website.",
+  "commands.economia.atm.web_token.unavailable": "Web token unavailable. Enable the Web API with PostgreSQL."
 }

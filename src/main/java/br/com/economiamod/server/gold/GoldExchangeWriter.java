@@ -3,6 +3,7 @@ package br.com.economiamod.server.gold;
 import br.com.economiamod.server.transaction.EconomyTransactionStatus;
 import br.com.economiamod.server.transaction.EconomyTransactionType;
 import br.com.economiamod.server.transaction.LedgerEntryType;
+import br.com.economiamod.server.transaction.TransactionOrigin;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -29,13 +30,14 @@ public final class GoldExchangeWriter {
         }
     }
 
-    public void insertTransaction(Connection connection, UUID transactionId, String idempotencyKey, EconomyTransactionType type, long amount, UUID playerUuid, UUID accountId, UUID commercialBlockId) throws SQLException {
+    public void insertTransaction(Connection connection, UUID transactionId, String idempotencyKey, EconomyTransactionType type, long amount, UUID playerUuid, UUID accountId, UUID commercialBlockId, String fingerprint) throws SQLException {
         String sql = """
                 INSERT INTO economy_transactions(
                     id, idempotency_key, transaction_type, status, amount, initiator_player_uuid,
-                    source_account_id, destination_account_id, commercial_block_id, created_at, completed_at
+                    source_account_id, destination_account_id, commercial_block_id, request_fingerprint, origin,
+                    created_at, completed_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, transactionId);
@@ -47,6 +49,8 @@ public final class GoldExchangeWriter {
             setNullableUuid(statement, 7, type == EconomyTransactionType.GOLD_REDEMPTION ? accountId : null);
             setNullableUuid(statement, 8, type == EconomyTransactionType.GOLD_MINT ? accountId : null);
             statement.setObject(9, commercialBlockId);
+            statement.setString(10, fingerprint);
+            statement.setString(11, TransactionOrigin.MINECRAFT.name());
             statement.executeUpdate();
         }
     }

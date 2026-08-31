@@ -48,7 +48,13 @@ import br.com.economiamod.server.invoice.InvoicePaymentService;
 import br.com.economiamod.server.invoice.InvoiceQueryService;
 import br.com.economiamod.server.claim.ClaimInvoiceService;
 import br.com.economiamod.server.operation.EconomyOperationService;
+import br.com.economiamod.server.operation.EconomyOperationState;
+import br.com.economiamod.server.operation.EconomyOperationType;
+import br.com.economiamod.server.operation.OperationStartResult;
+import br.com.economiamod.server.operation.OperationStartType;
+import br.com.economiamod.server.persistence.EconomyDatabase;
 import br.com.economiamod.server.persistence.EconomyDatabaseState;
+import br.com.economiamod.server.web.WebLoginTicketService;
 import br.com.economiamod.server.security.PasswordService;
 import br.com.economiamod.server.session.BankSession;
 import br.com.economiamod.server.session.BankSessionService;
@@ -70,8 +76,9 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public final class SecureAccountPayloadHandler {
-    private static final int MIN_PASSWORD_LENGTH = 4;
-    private static final int MAX_PASSWORD_LENGTH = 12;
+    private static final int LEGACY_MIN_PASSWORD_LENGTH = 4;
+    private static final int NEW_MIN_PASSWORD_LENGTH = 8;
+    private static final int MAX_PASSWORD_LENGTH = 64;
     private static final long CREDIT_REQUEST_COOLDOWN_MILLIS = 10_000L;
     private static final AccountService ACCOUNT_SERVICE = new AccountService(new PasswordService());
     private static final AccountOpeningService ACCOUNT_OPENING_SERVICE = new AccountOpeningService();
@@ -94,6 +101,7 @@ public final class SecureAccountPayloadHandler {
             new AccountFinancialService(),
             new EconomyOperationService()
     );
+    private static final EconomyOperationService CARD_ISSUE_OPERATIONS = new EconomyOperationService();
     private static final Map<UUID, Long> CREDIT_REQUEST_COOLDOWNS = new ConcurrentHashMap<>();
 
     private SecureAccountPayloadHandler() {
@@ -107,6 +115,12 @@ public final class SecureAccountPayloadHandler {
 
         if (!EconomyDatabaseState.isAvailable()) {
             serverPlayer.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+            return;
+        }
+        // Every SecureAccountPayload is emitted by the ATM screen. Enforce that server-side so a
+        // modified client cannot keep a banking session and execute ATM actions from anywhere.
+        if (!(serverPlayer.containerMenu instanceof AtmMenu)) {
+            serverPlayer.sendSystemMessage(Component.translatable("commands.economia.atm.card_login.open_atm"));
             return;
         }
 
@@ -139,6 +153,7 @@ public final class SecureAccountPayloadHandler {
                 case DEPOSIT -> deposit(serverPlayer, payload);
                 case OPERATION_HISTORY -> syncOperationHistory(serverPlayer);
                 case SET_ACCOUNT_OPENING_MODE -> setAccountOpeningMode(serverPlayer, payload);
+                case WEB_LOGIN_TOKEN -> createWebLoginToken(serverPlayer);
             }
         } catch (SQLException | RuntimeException exception) {
             EconomiaMod.LOGGER.warn("Falha ao processar acao segura de conta bancaria.", exception);
@@ -147,7 +162,7 @@ public final class SecureAccountPayloadHandler {
     }
 
     private static void login(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
-        if (!validUsernameAndPassword(payload.username(), payload.password())) {
+        if (!validUsernameAndPasswordForLogin(payload.username(), payload.password())) {
             player.sendSystemMessage(Component.translatable("commands.economia.account.invalid_input"));
             return;
         }
@@ -201,11 +216,11 @@ public final class SecureAccountPayloadHandler {
     }
 
     private static void createAccount(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
-        if (!validPassword(payload.password())) {
+        if (!validNewPassword(payload.password())) {
             player.sendSystemMessage(Component.translatable("commands.economia.account.password.length"));
             return;
         }
-        if (!validUsernameAndPassword(payload.username(), payload.password())) {
+        if (!validUsernameAndPasswordForCreation(payload.username(), payload.password())) {
             player.sendSystemMessage(Component.translatable("commands.economia.account.invalid_input"));
             return;
         }
@@ -238,7 +253,7 @@ public final class SecureAccountPayloadHandler {
     }
 
     private static void changePassword(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
-        if (!validPassword(payload.password()) || !validPassword(payload.newPassword())) {
+        if (!validLegacyPassword(payload.password()) || !validNewPassword(payload.newPassword())) {
             player.sendSystemMessage(Component.translatable("commands.economia.account.password.length"));
             return;
         }
@@ -282,7 +297,7 @@ public final class SecureAccountPayloadHandler {
             player.sendSystemMessage(Component.translatable("commands.economia.account.invalid_input"));
             return;
         }
-        if (!validPassword(payload.newPassword())) {
+        if (!validNewPassword(payload.newPassword())) {
             player.sendSystemMessage(Component.translatable("commands.economia.account.password.length"));
             return;
         }
@@ -666,8 +681,32 @@ public final class SecureAccountPayloadHandler {
             return;
         }
 
-        CardIssueResult result = CARD_ISSUE_SERVICE.issue(new CardIssueRequest(session.accountId(), cardType, player.getGameProfile().getName(), 0L));
+        UUID effectiveRequestId = payload.requestId() == null ? UUID.randomUUID() : payload.requestId();
+        String operationKey = "operation:card-issue:" + player.getUUID() + ":" + effectiveRequestId;
+        String operationPayload = "account=" + session.accountId() + ";type=" + cardType + ";limit=0";
+        OperationStartResult startResult = CARD_ISSUE_OPERATIONS.begin(operationKey, EconomyOperationType.CARD_ISSUE,
+                player.getUUID(), operationPayload);
+        if (startResult.type() == OperationStartType.DUPLICATE_COMPLETED) {
+            player.sendSystemMessage(Component.translatable("commands.economia.atm.card.success"));
+            syncAccountSummary(player, session.accountId());
+            syncCards(player, session.accountId());
+            return;
+        }
+        if (startResult.type() != OperationStartType.CREATED) {
+            player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+            return;
+        }
+        if (!CARD_ISSUE_OPERATIONS.mark(operationKey, EconomyOperationState.ITEMS_RESERVED)) {
+            CARD_ISSUE_OPERATIONS.markReconciliationRequired(operationKey, "card issue could not enter reserved state");
+            player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+            return;
+        }
+
+        CardIssueResult result = CARD_ISSUE_SERVICE.issue(new CardIssueRequest(
+                session.accountId(), cardType, player.getGameProfile().getName(), 0L,
+                player.getUUID(), effectiveRequestId));
         if (result.type() == CardIssueResultType.ISSUED) {
+            CARD_ISSUE_OPERATIONS.mark(operationKey, EconomyOperationState.SQL_COMMITTED);
             var stack = new CardItemDataService().createCardStack(
                     result.cardType(),
                     result.cardId(),
@@ -679,11 +718,20 @@ public final class SecureAccountPayloadHandler {
             if (!player.getInventory().add(stack)) {
                 player.drop(stack, false);
             }
+            CARD_ISSUE_OPERATIONS.mark(operationKey, EconomyOperationState.ITEMS_DELIVERED);
+            CARD_ISSUE_OPERATIONS.mark(operationKey, EconomyOperationState.COMPLETED);
             player.sendSystemMessage(Component.translatable("commands.economia.atm.card.success"));
             syncAccountSummary(player, session.accountId());
             syncCards(player, session.accountId());
             return;
         }
+        if (result.type() == CardIssueResultType.DUPLICATE_ISSUED
+                || result.type() == CardIssueResultType.IDEMPOTENCY_CONFLICT) {
+            CARD_ISSUE_OPERATIONS.markReconciliationRequired(operationKey, "card issue replay/conflict");
+            player.sendSystemMessage(Component.translatable("commands.economia.unavailable"));
+            return;
+        }
+        CARD_ISSUE_OPERATIONS.mark(operationKey, EconomyOperationState.ROLLED_BACK);
         player.sendSystemMessage(Component.translatable("commands.economia.atm.card." + result.type().name().toLowerCase()));
     }
 
@@ -855,7 +903,7 @@ public final class SecureAccountPayloadHandler {
         syncAccountSummary(player, session.accountId());
     }
 
-    private static void syncAccountSummary(ServerPlayer player, java.util.UUID accountId) throws SQLException {
+    private static void syncAccountSummary(ServerPlayer player, UUID accountId) throws SQLException {
         AccountBalanceSummary summary = ACCOUNT_QUERY_SERVICE.findBalanceSummary(accountId).orElse(null);
         if (summary == null) {
             PacketDistributor.sendToPlayer(player, new AtmAccountSummaryPayload(false, 0L, 0L, 0L, 0L, 0L));
@@ -893,7 +941,7 @@ public final class SecureAccountPayloadHandler {
         }
     }
 
-    private static void safeSyncAccountSummary(ServerPlayer player, java.util.UUID accountId) {
+    private static void safeSyncAccountSummary(ServerPlayer player, UUID accountId) {
         try {
             syncAccountSummary(player, accountId);
         } catch (SQLException exception) {
@@ -924,12 +972,24 @@ public final class SecureAccountPayloadHandler {
         }
     }
 
-    private static boolean validUsernameAndPassword(String username, String password) {
-        return username != null && !username.trim().isEmpty() && username.length() <= 32 && validPassword(password);
+    private static boolean validUsernameAndPasswordForLogin(String username, String password) {
+        return validUsername(username) && validLegacyPassword(password);
     }
 
-    private static boolean validPassword(String password) {
-        return password != null && password.length() >= MIN_PASSWORD_LENGTH && password.length() <= MAX_PASSWORD_LENGTH;
+    private static boolean validUsernameAndPasswordForCreation(String username, String password) {
+        return validUsername(username) && validNewPassword(password);
+    }
+
+    private static boolean validUsername(String username) {
+        return username != null && !username.trim().isEmpty() && username.length() <= 32;
+    }
+
+    private static boolean validLegacyPassword(String password) {
+        return password != null && password.length() >= LEGACY_MIN_PASSWORD_LENGTH && password.length() <= MAX_PASSWORD_LENGTH;
+    }
+
+    private static boolean validNewPassword(String password) {
+        return password != null && password.length() >= NEW_MIN_PASSWORD_LENGTH && password.length() <= MAX_PASSWORD_LENGTH;
     }
 
     private static String stableRequestId(UUID requestId) {
@@ -955,4 +1015,24 @@ public final class SecureAccountPayloadHandler {
         int availableDay = Math.max(1, dueDay - EconomyServerConfig.CREDIT_INVOICE_AVAILABLE_DAYS_BEFORE.get());
         return today.getDayOfMonth() >= availableDay;
     }
+    private static void createWebLoginToken(ServerPlayer player) throws SQLException {
+        BankSession session = requireSession(player);
+        if (session == null) {
+            return;
+        }
+        if (!EconomyServerConfig.WEB_API_ENABLED.get() || !EconomyDatabase.isPostgreSql()) {
+            player.sendSystemMessage(Component.translatable("commands.economia.atm.web_token.unavailable"));
+            return;
+        }
+        try {
+            String token = WebLoginTicketService.INSTANCE.create(session.accountId(), player.getUUID());
+            player.sendSystemMessage(Component.translatable(
+                    "commands.economia.atm.web_token.created", token, WebLoginTicketService.DEFAULT_TTL_SECONDS));
+        } catch (RuntimeException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao gerar token web para a conta autenticada.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.atm.web_token.unavailable"));
+        }
+    }
+
+
 }

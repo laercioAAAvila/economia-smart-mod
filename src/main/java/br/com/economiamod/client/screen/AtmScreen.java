@@ -101,6 +101,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
     private Button transferButton;
     private Button changePasswordButton;
     private Button unblockCardButton;
+    private Button webLoginTokenButton;
     private Button logoutButton;
     private Button modalConfirmButton;
     private Button modalCancelButton;
@@ -419,6 +420,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
         transferButton = addRenderableWidget(button(leftPos + 204, topPos + 104, 82, "screen.economia.atm.transfer", () -> openPasswordModal(PendingSensitiveAction.TRANSFER)));
         changePasswordButton = addRenderableWidget(button(leftPos + 24, topPos + 144, 150, "screen.economia.atm.change_password", () -> secure(SecureAccountAction.CHANGE_PASSWORD)));
         unblockCardButton = addRenderableWidget(button(leftPos + 266, topPos + 112, 70, "screen.economia.atm.unblock_card", () -> secure(SecureAccountAction.UNBLOCK_CARD)));
+        webLoginTokenButton = addRenderableWidget(button(leftPos + 266, topPos + 144, 70, "screen.economia.atm.web_token", () -> secure(SecureAccountAction.WEB_LOGIN_TOKEN)));
         logoutButton = addRenderableWidget(button(leftPos + 186, topPos + 144, 70, "screen.economia.atm.logout", this::logout));
         modalConfirmButton = addRenderableWidget(button(leftPos + 94, topPos + 140, 78, "screen.economia.atm.confirm", this::confirmPasswordModal));
         modalCancelButton = addRenderableWidget(button(leftPos + 180, topPos + 140, 78, "screen.economia.atm.cancel", this::closePasswordModal));
@@ -445,7 +447,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
 
     private EditBox passwordBox(int x, int y, int width, String key) {
         EditBox box = textBox(x, y, width, key);
-        box.setMaxLength(12);
+        box.setMaxLength(64);
         box.setFormatter((text, offset) -> FormattedCharSequence.forward("*".repeat(text.length()), Style.EMPTY));
         return box;
     }
@@ -703,6 +705,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
                 transferButton,
                 changePasswordButton,
                 unblockCardButton,
+                webLoginTokenButton,
                 logoutButton,
                 modalConfirmButton,
                 modalCancelButton
@@ -725,7 +728,7 @@ public final class AtmScreen extends AbstractContainerScreen<AtmMenu> implements
             case TRANSFER -> setVisible(true, transferAccountNumber, transferAmount, transferButton);
             case HISTORY -> {
             }
-            case SECURITY -> setVisible(true, securityPassword, securityNewPassword, changePasswordButton, unblockCardButton, logoutButton);
+            case SECURITY -> setVisible(true, securityPassword, securityNewPassword, changePasswordButton, unblockCardButton, webLoginTokenButton, logoutButton);
             case GOLD_INFO -> {
             }
         }

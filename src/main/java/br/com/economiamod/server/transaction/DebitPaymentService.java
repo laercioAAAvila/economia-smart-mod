@@ -65,8 +65,15 @@ public final class DebitPaymentService {
         if (card.accountId().equals(destinationAccountId)) {
             return DebitPurchaseResult.completed();
         }
-        if (transactionWriter.completedTransactionExists(connection, idempotencyKey)) {
+        String key = IdempotencyKeys.requireValid(idempotencyKey);
+        String fingerprint = RequestFingerprint.of(EconomyTransactionType.DEBIT_PURCHASE, playerUuid,
+                card.cardId(), card.accountId(), destinationAccountId, amount);
+        IdempotencyCheck idempotency = transactionWriter.idempotencyCheck(connection, key, fingerprint);
+        if (idempotency == IdempotencyCheck.MATCH) {
             return DebitPurchaseResult.duplicateCompleted();
+        }
+        if (idempotency == IdempotencyCheck.CONFLICT) {
+            return DebitPurchaseResult.idempotencyConflict();
         }
 
         accountRepository.lockAccountsOrdered(connection, card.accountId(), destinationAccountId);
@@ -92,8 +99,9 @@ public final class DebitPaymentService {
         updateDebitDailySpent(connection, card.cardId(), dailyLimit, amount);
         accountRepository.updateBalance(connection, card.accountId(), sourceAfter);
         accountRepository.updateBalance(connection, destinationAccountId, destinationAfter);
-        transactionWriter.insertDebitTransaction(connection, transactionId, idempotencyKey, amount,
-                playerUuid, card.accountId(), destinationAccountId, card.cardId());
+        transactionWriter.insertDebitTransaction(connection, transactionId, key, amount,
+                playerUuid, card.accountId(), destinationAccountId, card.cardId(), fingerprint,
+                TransactionOrigin.MINECRAFT);
         transactionWriter.insertLedger(connection, transactionId, card.accountId(),
                 LedgerEntryType.DEBIT, amount, source.balance(), sourceAfter);
         transactionWriter.insertLedger(connection, transactionId, destinationAccountId,

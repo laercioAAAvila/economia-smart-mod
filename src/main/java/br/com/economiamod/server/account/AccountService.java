@@ -6,6 +6,7 @@ import br.com.economiamod.common.account.AccountStatus;
 import br.com.economiamod.common.account.AccountType;
 import br.com.economiamod.common.credit.CreditLimitPolicy;
 import br.com.economiamod.server.config.EconomyServerConfig;
+import br.com.economiamod.server.persistence.DatabaseEngine;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import br.com.economiamod.server.security.PasswordHash;
 import br.com.economiamod.server.security.PasswordService;
@@ -558,6 +559,23 @@ public final class AccountService {
     }
 
     private String nextAccountNumber(Connection connection) throws SQLException {
+        if (EconomyDatabase.engine() == DatabaseEngine.SQLITE) {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT COALESCE(MAX(CAST(account_number AS INTEGER)), 0) + 1 AS value
+                      FROM economy_accounts
+                     WHERE account_type = 'PLAYER'
+                       AND account_number IS NOT NULL
+                    """);
+                 ResultSet resultSet = statement.executeQuery()) {
+                resultSet.next();
+                int value = resultSet.getInt("value");
+                if (value < 1 || value > 999999) {
+                    throw new SQLException("No account number available");
+                }
+                return "%06d".formatted(value);
+            }
+        }
+
         String sql = "SELECT nextval('economy_account_number_seq') AS value";
         for (int attempt = 0; attempt < 16; attempt++) {
             try (PreparedStatement statement = connection.prepareStatement(sql);
@@ -643,6 +661,11 @@ public final class AccountService {
     }
 
     private void lockPlayerAccountScope(Connection connection, UUID serverUuid, UUID playerUuid) throws SQLException {
+        if (EconomyDatabase.engine() == DatabaseEngine.SQLITE) {
+            // SQLite transactions are opened in IMMEDIATE mode; the single writer lock
+            // serializes account creation without requiring a database-specific advisory lock.
+            return;
+        }
         long lockKey = serverUuid.getMostSignificantBits() ^ serverUuid.getLeastSignificantBits()
                 ^ playerUuid.getMostSignificantBits() ^ playerUuid.getLeastSignificantBits();
         try (PreparedStatement statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(?)")) {

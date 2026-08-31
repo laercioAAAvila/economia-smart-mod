@@ -1,12 +1,12 @@
 package br.com.economiamod.server.persistence;
 
-import br.com.economiamod.server.account.SystemAccountInitializer;
 import br.com.economiamod.server.account.BankServerIdentityService;
+import br.com.economiamod.server.account.SystemAccountInitializer;
+import br.com.economiamod.server.claim.ClaimAnchorChunkLoaderService;
+import br.com.economiamod.server.claim.ClaimPurchaseSessionService;
 import br.com.economiamod.server.gold.GoldReserveService;
 import br.com.economiamod.server.group.ClaimLimitUpgradeService;
 import br.com.economiamod.server.group.ServerActiveClockService;
-import br.com.economiamod.server.claim.ClaimAnchorChunkLoaderService;
-import br.com.economiamod.server.claim.ClaimPurchaseSessionService;
 import br.com.economiamod.server.persistence.migration.MigrationCatalog;
 import br.com.economiamod.server.persistence.migration.MigrationCatalogVerifier;
 import br.com.economiamod.server.persistence.migration.MigrationResourceLoader;
@@ -21,63 +21,79 @@ import java.util.List;
 import net.minecraft.server.MinecraftServer;
 
 public final class DatabaseResetService {
-    public int reset(MinecraftServer server) throws IOException, SQLException {
-        DatabaseSettings settings = DatabaseSettings.fromConfig();
-        List<VerifiedMigration> migrations = new MigrationCatalogVerifier(new MigrationResourceLoader()).verifyCatalog();
+    private static final List<String> TABLES = List.of(
+            "economy_player_locations",
+            "economy_claim_invoice_bundle_items",
+            "economy_claim_limit_upgrades",
+            "economy_claim_direct_payments",
+            "economy_claim_invoices",
+            "economy_private_property_members",
+            "economy_claims",
+            "economy_claim_territories",
+            "economy_claim_anchors",
+            "economy_group_invites",
+            "economy_group_members",
+            "economy_groups",
+            "economy_server_clock",
+            "economy_mail_recipients",
+            "economy_operations",
+            "economy_audit_logs",
+            "economy_daily_job_runs",
+            "economy_daily_interest_accruals",
+            "economy_gold_exchange_entries",
+            "economy_gold_reserve_summary",
+            "economy_inventory_slots",
+            "economy_shop_offers",
+            "economy_commercial_blocks",
+            "economy_card_entries",
+            "economy_interest_accruals",
+            "economy_ledger_entries",
+            "economy_transactions",
+            "economy_cards",
+            "economy_accounts",
+            "economy_schema_migrations"
+    );
 
-        EconomyDatabaseState.initializing(MigrationCatalog.all().size());
-        EconomyDatabase.open(settings);
-        dropEconomyObjects();
-        new SqlMigrationExecutor(settings).apply(migrations);
-        BankServerIdentityService.INSTANCE.initialize(server);
-        new SystemAccountInitializer().initialize();
-        new GoldReserveService().initialize();
-        new ClaimLimitUpgradeService().normalizeAll();
-        ServerActiveClockService.INSTANCE.stop();
-        ServerActiveClockService.INSTANCE.start();
-        ClaimAnchorChunkLoaderService.INSTANCE.refresh(server);
-        BankSessionService.INSTANCE.clear();
-        ClaimPurchaseSessionService.INSTANCE.clearAll();
-        EconomyDatabaseState.available(migrations.size());
-        return migrations.size();
+    public int reset(MinecraftServer server) throws IOException, SQLException {
+        DatabaseSettings settings = DatabaseSettings.fromConfig(server);
+        List<VerifiedMigration> migrations = new MigrationCatalogVerifier(new MigrationResourceLoader())
+                .verifyCatalog(settings.engine());
+
+        EconomyDatabaseState.initializing(MigrationCatalog.all(settings.engine()).size());
+        try {
+            EconomyDatabase.open(settings);
+            dropEconomyObjects(settings.engine());
+            new SqlMigrationExecutor(settings).apply(migrations);
+            BankServerIdentityService.INSTANCE.initialize(server);
+            new SystemAccountInitializer().initialize();
+            new GoldReserveService().initialize();
+            new ClaimLimitUpgradeService().normalizeAll();
+            ServerActiveClockService.INSTANCE.stop();
+            ServerActiveClockService.INSTANCE.start();
+            ClaimAnchorChunkLoaderService.INSTANCE.refresh(server);
+            BankSessionService.INSTANCE.clear();
+            ClaimPurchaseSessionService.INSTANCE.clearAll();
+            EconomyDatabaseState.available(migrations.size());
+            return migrations.size();
+        } catch (SQLException | RuntimeException exception) {
+            EconomyDatabaseState.unavailable("Falha ao resetar banco: " + exception.getMessage(), migrations.size());
+            throw exception;
+        }
     }
 
-    private void dropEconomyObjects() throws SQLException {
+    private void dropEconomyObjects(DatabaseEngine engine) throws SQLException {
         try (Connection connection = EconomyDatabase.getConnection();
              Statement statement = connection.createStatement()) {
-            statement.execute("""
-                    DROP TABLE IF EXISTS
-                        economy_player_locations,
-                        economy_claim_invoice_bundle_items,
-                        economy_claim_limit_upgrades,
-                        economy_claim_direct_payments,
-                        economy_claim_invoices,
-                        economy_private_property_members,
-                        economy_claims,
-                        economy_claim_territories,
-                        economy_claim_anchors,
-                        economy_group_invites,
-                        economy_group_members,
-                        economy_groups,
-                        economy_server_clock,
-                        economy_mail_recipients,
-                        economy_operations,
-                        economy_audit_logs,
-                        economy_daily_job_runs,
-                        economy_daily_interest_accruals,
-                        economy_gold_exchange_entries,
-                        economy_gold_reserve_summary,
-                        economy_inventory_slots,
-                        economy_shop_offers,
-                        economy_commercial_blocks,
-                        economy_card_entries,
-                        economy_ledger_entries,
-                        economy_transactions,
-                        economy_cards,
-                        economy_accounts,
-                        economy_schema_migrations
-                    CASCADE
-                    """);
+            if (engine == DatabaseEngine.SQLITE) {
+                statement.execute("PRAGMA foreign_keys = OFF");
+                for (String table : TABLES) {
+                    statement.execute("DROP TABLE IF EXISTS " + table);
+                }
+                statement.execute("PRAGMA foreign_keys = ON");
+                return;
+            }
+
+            statement.execute("DROP TABLE IF EXISTS " + String.join(", ", TABLES) + " CASCADE");
             statement.execute("DROP SEQUENCE IF EXISTS economy_account_number_seq");
         }
     }

@@ -14,6 +14,7 @@ public final class EconomyServerConfig {
     public static final ModConfigSpec.ConfigValue<String> DATABASE_USERNAME;
     public static final ModConfigSpec.ConfigValue<String> DATABASE_PASSWORD;
     public static final ModConfigSpec.BooleanValue DATABASE_SSL;
+    public static final ModConfigSpec.ConfigValue<String> DATABASE_SQLITE_FILE;
     public static final ModConfigSpec.IntValue DATABASE_POOL_MINIMUM;
     public static final ModConfigSpec.IntValue DATABASE_POOL_MAXIMUM;
     public static final ModConfigSpec.IntValue DATABASE_CONNECTION_TIMEOUT_MS;
@@ -21,6 +22,14 @@ public final class EconomyServerConfig {
 
     public static final ModConfigSpec.ConfigValue<String> ECONOMY_TIME_ZONE;
     public static final ModConfigSpec.IntValue ECONOMY_SESSION_TIMEOUT_SECONDS;
+
+    public static final ModConfigSpec.BooleanValue WEB_API_ENABLED;
+    public static final ModConfigSpec.ConfigValue<String> WEB_API_BIND;
+    public static final ModConfigSpec.IntValue WEB_API_PORT;
+    public static final ModConfigSpec.ConfigValue<String> WEB_API_ALLOWED_ORIGIN;
+    public static final ModConfigSpec.IntValue WEB_API_SESSION_TIMEOUT_SECONDS;
+    public static final ModConfigSpec.IntValue WEB_API_LOGIN_MAX_ATTEMPTS;
+    public static final ModConfigSpec.IntValue WEB_API_LOGIN_WINDOW_SECONDS;
 
     public static final ModConfigSpec.BooleanValue CREDIT_INTEREST_ENABLED;
     public static final ModConfigSpec.IntValue CREDIT_INTEREST_DAILY_RATE_BPS;
@@ -90,23 +99,67 @@ public final class EconomyServerConfig {
     public static final ModConfigSpec SPEC;
 
     static {
-        BUILDER.push("database");
-        DATABASE_TYPE = BUILDER.define("type", "postgresql");
-        DATABASE_HOST = BUILDER.define("host", "localhost");
+        BUILDER.comment(
+                "============================================================",
+                "BANCO DE DADOS",
+                "Padrao: SQLite local, sem servidor externo.",
+                "Use type = \"postgresql\" ou \"pgsql\" apenas se quiser PostgreSQL.",
+                "============================================================")
+                .push("database");
+        DATABASE_TYPE = BUILDER
+                .comment("Banco ativo: sqlite/sql ou postgresql/pgsql. Padrao: sqlite.")
+                .define("type", "sqlite");
+        DATABASE_SQLITE_FILE = BUILDER
+                .comment("SQLite ativo por padrao. Caminho relativo ao save do mundo.")
+                .define("sqliteFile", "economia/economia.db");
+
+        DATABASE_HOST = BUILDER
+                .comment(
+                        "PostgreSQL - configuracoes abaixo sao ignoradas enquanto type = \"sqlite\".",
+                        "Para usar PostgreSQL, altere type para \"postgresql\" ou \"pgsql\".")
+                .define("host", "127.0.0.1");
         DATABASE_PORT = BUILDER.defineInRange("port", 5432, 1, 65535);
         DATABASE_NAME = BUILDER.define("name", "economia");
         DATABASE_USERNAME = BUILDER.define("username", "economia");
         DATABASE_PASSWORD = BUILDER.define("password", "");
         DATABASE_SSL = BUILDER.define("ssl", false);
-        DATABASE_POOL_MINIMUM = BUILDER.defineInRange("pool.minimum", 1, 0, 64);
-        DATABASE_POOL_MAXIMUM = BUILDER.defineInRange("pool.maximum", 10, 1, 128);
-        DATABASE_CONNECTION_TIMEOUT_MS = BUILDER.defineInRange("connectionTimeout", 10000, 1000, 120000);
+
+        DATABASE_CONNECTION_TIMEOUT_MS = BUILDER
+                .comment("Timeouts compartilhados pelos bancos suportados.")
+                .defineInRange("connectionTimeout", 10000, 1000, 120000);
         DATABASE_QUERY_TIMEOUT_MS = BUILDER.defineInRange("queryTimeout", 10000, 1000, 120000);
+        DATABASE_POOL_MINIMUM = BUILDER
+                .comment("Pool padrao para SQLite: 1 conexao. Em PostgreSQL, o maximum pode ser aumentado.")
+                .defineInRange("pool.minimum", 1, 0, 64);
+        DATABASE_POOL_MAXIMUM = BUILDER.defineInRange("pool.maximum", 1, 1, 128);
         BUILDER.pop();
 
-        BUILDER.push("economy");
+        BUILDER.comment(
+                "============================================================",
+                "ECONOMIA",
+                "============================================================")
+                .push("economy");
         ECONOMY_TIME_ZONE = BUILDER.define("timeZone", "America/Araguaina");
         ECONOMY_SESSION_TIMEOUT_SECONDS = BUILDER.defineInRange("sessionTimeoutSeconds", 900, 60, 86400);
+        BUILDER.pop();
+
+        BUILDER.comment(
+                "============================================================",
+                "WEB API",
+                "Padrao: desativada. Recomendada apenas com PostgreSQL.",
+                "============================================================")
+                .push("webApi");
+        WEB_API_ENABLED = BUILDER
+                .comment("false = API/website desativados. Padrao: false.")
+                .define("enabled", false);
+        WEB_API_BIND = BUILDER
+                .comment("Configuracoes abaixo sao ignoradas enquanto enabled = false.")
+                .define("bind", "127.0.0.1");
+        WEB_API_PORT = BUILDER.defineInRange("port", 8765, 1, 65535);
+        WEB_API_ALLOWED_ORIGIN = BUILDER.define("allowedOrigin", "");
+        WEB_API_SESSION_TIMEOUT_SECONDS = BUILDER.defineInRange("sessionTimeoutSeconds", 900, 60, 86400);
+        WEB_API_LOGIN_MAX_ATTEMPTS = BUILDER.defineInRange("loginMaxAttempts", 5, 1, 100);
+        WEB_API_LOGIN_WINDOW_SECONDS = BUILDER.defineInRange("loginWindowSeconds", 300, 30, 86400);
         BUILDER.pop();
 
         BUILDER.push("credit");

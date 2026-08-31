@@ -21,7 +21,7 @@ public final class BankWorldIdentitySavedData extends SavedData {
     }
 
     public static UUID get(MinecraftServer server) {
-        SavedData.Factory<BankWorldIdentitySavedData> factory = new SavedData.Factory<>(
+        Factory<BankWorldIdentitySavedData> factory = new Factory<>(
                 BankWorldIdentitySavedData::new,
                 (tag, provider) -> load(tag)
         );

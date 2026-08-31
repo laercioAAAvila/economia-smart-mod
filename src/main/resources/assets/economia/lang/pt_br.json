@@ -43,7 +43,7 @@
   "screen.economia.atm.account_credit_limit": "Limite da conta",
   "screen.economia.atm.card_credit_limit": "Limite do cartão",
   "screen.economia.atm.current_password": "Senha atual",
-  "screen.economia.atm.password_rule": "Senha: 4 a 12 caracteres",
+  "screen.economia.atm.password_rule": "Novas senhas: 8 a 64 caracteres",
   "screen.economia.atm.login_section": "Acesso",
   "screen.economia.atm.cash_section": "Dinheiro",
   "screen.economia.atm.card_section": "Cartões",
@@ -226,7 +226,7 @@
   "commands.economia.account.password.changed": "Senha alterada.",
   "commands.economia.account.password.invalid": "Senha atual inválida.",
   "commands.economia.account.password.invalid_attempts_remaining": "Senha inválida. Tentativas restantes antes de bloquear o cartão: %s.",
-  "commands.economia.account.password.length": "A senha deve ter de 4 a 12 caracteres.",
+  "commands.economia.account.password.length": "Novas senhas devem ter de 8 a 64 caracteres.",
   "commands.economia.account.password.not_found": "Conta não encontrada.",
   "commands.economia.account.password.inactive_account": "Conta inativa.",
   "commands.economia.account.password.recovered": "Senha redefinida.",
@@ -255,6 +255,7 @@
   "commands.economia.atm.operation.insufficient_inventory_space": "Sem espaço no inventário.",
   "commands.economia.atm.operation.invalid_denomination": "Espécie de nota inválida para este saque.",
   "commands.economia.atm.operation.inactive_account": "Conta inativa.",
+  "commands.economia.atm.operation.reconciliation_required": "Operação bloqueada por segurança e marcada para reconciliação administrativa.",
   "commands.economia.atm.card.success": "Cartão emitido.",
   "commands.economia.atm.card.inactive_account": "Conta inativa.",
   "commands.economia.atm.card.card_limit_reached": "Limite de cartões atingido.",
@@ -299,6 +300,7 @@
   "commands.economia.atm.transfer.insufficient_balance": "Saldo insuficiente.",
   "commands.economia.atm.transfer.inactive_account": "Conta inativa.",
   "commands.economia.atm.transfer.duplicate_completed": "Transferência já processada.",
+  "commands.economia.atm.transfer.idempotency_conflict": "Requisição repetida com dados diferentes. A transferência foi bloqueada por segurança.",
   "commands.economia.atm.invoice.paid": "Fatura paga: R$ %s. Saldo: R$ %s.",
   "commands.economia.atm.invoice.unavailable": "A fatura ainda não está disponível para pagamento.",
   "commands.economia.atm.invoice.missing": "Coloque a fatura da conta no slot de fatura.",
@@ -589,5 +591,8 @@
   "commands.economia.atm.claim_invoice.insufficient_balance": "Saldo insuficiente para pagar o boleto.",
   "commands.economia.atm.claim_invoice.inactive_account": "A conta está inativa.",
   "commands.economia.atm.claim_invoice.buyer_territory_limit": "Você atingiu o limite de terrenos.",
-  "screen.economia.group.private_property_claim_first": "Crie sua primeira propriedade pelo Bloco de Claim Privado."
+  "screen.economia.group.private_property_claim_first": "Crie sua primeira propriedade pelo Bloco de Claim Privado.",
+  "screen.economia.atm.web_token": "Token web",
+  "commands.economia.atm.web_token.created": "Token web: %s (valido por %s segundos). Use uma unica vez no site.",
+  "commands.economia.atm.web_token.unavailable": "Token web indisponivel. Ative a Web API com PostgreSQL."
 }

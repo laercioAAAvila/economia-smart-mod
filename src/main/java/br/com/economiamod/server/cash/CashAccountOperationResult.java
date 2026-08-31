@@ -24,4 +24,8 @@ public record CashAccountOperationResult(CashAccountOperationResultType type, lo
     public static CashAccountOperationResult inactiveAccount() {
         return new CashAccountOperationResult(CashAccountOperationResultType.INACTIVE_ACCOUNT, 0L, 0L);
     }
+
+    public static CashAccountOperationResult reconciliationRequired() {
+        return new CashAccountOperationResult(CashAccountOperationResultType.RECONCILIATION_REQUIRED, 0L, 0L);
+    }
 }

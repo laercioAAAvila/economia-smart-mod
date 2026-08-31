@@ -7,7 +7,11 @@ public record CardIssueRequest(
         UUID accountId,
         CardType cardType,
         String customName,
-        long individualCreditLimit
+        long individualCreditLimit,
+        UUID playerUuid,
+        UUID requestId
 ) {
+    public CardIssueRequest(UUID accountId, CardType cardType, String customName, long individualCreditLimit) {
+        this(accountId, cardType, customName, individualCreditLimit, null, UUID.randomUUID());
+    }
 }
-

@@ -60,7 +60,7 @@ public final class SqlMigrationExecutor {
     }
 
     private void executeSql(Connection connection, String sql) throws SQLException {
-        for (String statementSql : sql.split(";")) {
+        for (String statementSql : SqlStatementSplitter.split(sql)) {
             String trimmed = statementSql.trim();
             if (trimmed.isEmpty()) {
                 continue;

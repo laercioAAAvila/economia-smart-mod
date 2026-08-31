@@ -32,11 +32,18 @@ public final class AccountOpeningService {
                     net.minecraft.world.item.ItemStack.EMPTY, cash, prepared.openingFee(),
                     "Abertura de conta", "account-opening:" + prepared.accountId());
             if (!payment.success()) {
-                accounts.deletePendingAccount(prepared.accountId());
+                if (!ambiguousPayment(payment)) {
+                    accounts.deletePendingAccount(prepared.accountId());
+                }
                 return AccountOpeningResult.denied("payment_" + payment.code());
             }
         }
         accounts.activatePendingAccount(prepared.accountId());
         return AccountOpeningResult.created(prepared.accountId());
+    }
+
+    private boolean ambiguousPayment(MenuPaymentResult payment) {
+        return "reconciliation_required".equals(payment.code())
+                || "idempotency_conflict".equals(payment.code());
     }
 }

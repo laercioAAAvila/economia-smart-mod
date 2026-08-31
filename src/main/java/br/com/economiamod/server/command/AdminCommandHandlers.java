@@ -118,8 +118,16 @@ public final class AdminCommandHandlers {
                 source.sendFailure(Component.literal("Conta nao encontrada."));
                 return 0;
             }
+            if (result.type() == AccountDeletionResultType.HAS_BALANCE_OR_DEBT) {
+                source.sendFailure(Component.literal("A conta possui saldo ou divida e nao pode ser encerrada."));
+                return 0;
+            }
+            if (result.type() == AccountDeletionResultType.ALREADY_CLOSED) {
+                source.sendSuccess(() -> Component.literal("Conta " + result.username() + " ja esta encerrada."), false);
+                return 1;
+            }
 
-            source.sendSuccess(() -> Component.literal("Conta " + result.username() + " deletada."), true);
+            source.sendSuccess(() -> Component.literal("Conta " + result.username() + " encerrada. Historico financeiro preservado."), true);
             return 1;
         } catch (SQLException | RuntimeException exception) {
             EconomiaMod.LOGGER.warn("Falha ao deletar conta bancaria.", exception);

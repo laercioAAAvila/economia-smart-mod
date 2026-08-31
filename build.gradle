@@ -38,6 +38,7 @@ runs {
         modSource project.sourceSets.main
         dependencies {
             runtime "org.postgresql:postgresql:${postgresql_jdbc_version}"
+            runtime "org.xerial:sqlite-jdbc:${sqlite_jdbc_version}"
             runtime "com.zaxxer:HikariCP:${hikaricp_version}"
         }
     }
@@ -73,17 +74,25 @@ tasks.withType(JavaExec).matching { it.name.startsWith('run') }.configureEach {
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
     implementation "org.postgresql:postgresql:${postgresql_jdbc_version}"
+    implementation "org.xerial:sqlite-jdbc:${sqlite_jdbc_version}"
     implementation "com.zaxxer:HikariCP:${hikaricp_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
     runtimeOnly "org.postgresql:postgresql:${postgresql_jdbc_version}"
+    runtimeOnly "org.xerial:sqlite-jdbc:${sqlite_jdbc_version}"
     runtimeOnly "com.zaxxer:HikariCP:${hikaricp_version}"
     localRuntime "org.postgresql:postgresql:${postgresql_jdbc_version}"
+    localRuntime "org.xerial:sqlite-jdbc:${sqlite_jdbc_version}"
     localRuntime "com.zaxxer:HikariCP:${hikaricp_version}"
     localRuntime "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
     jarJar(group: 'org.postgresql', name: 'postgresql') {
         version {
             prefer postgresql_jdbc_version
+        }
+    }
+    jarJar(group: 'org.xerial', name: 'sqlite-jdbc') {
+        version {
+            prefer sqlite_jdbc_version
         }
     }
     jarJar(group: 'com.zaxxer', name: 'HikariCP') {

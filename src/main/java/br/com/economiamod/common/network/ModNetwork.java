@@ -22,7 +22,7 @@ public final class ModNetwork {
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("1");
+        PayloadRegistrar registrar = event.registrar("2");
         registrar.playToServer(SecureAccountPayload.TYPE, SecureAccountPayload.STREAM_CODEC, SecureAccountPayloadHandler::handle);
         registrar.playToServer(ShopActionPayload.TYPE, ShopActionPayload.STREAM_CODEC, ShopActionPayloadHandler::handle);
         registrar.playToServer(ShopReferencePayload.TYPE, ShopReferencePayload.STREAM_CODEC, ShopReferencePayloadHandler::handle);

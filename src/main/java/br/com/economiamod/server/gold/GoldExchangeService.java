@@ -6,7 +6,11 @@ import br.com.economiamod.common.gold.GoldUnitConverter;
 import br.com.economiamod.server.account.SystemAccountIds;
 import br.com.economiamod.server.config.EconomyServerConfig;
 import br.com.economiamod.server.transaction.EconomyTransactionType;
+import br.com.economiamod.server.transaction.IdempotencyCheck;
+import br.com.economiamod.server.transaction.IdempotencyKeys;
 import br.com.economiamod.server.transaction.LedgerEntryType;
+import br.com.economiamod.server.transaction.RequestFingerprint;
+import br.com.economiamod.server.transaction.TransactionIdempotencyService;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
@@ -19,6 +23,7 @@ public final class GoldExchangeService {
     private final GoldExchangeRepository repository = new GoldExchangeRepository();
     private final GoldExchangeWriter writer = new GoldExchangeWriter();
     private final GoldDynamicPricingService pricingService = new GoldDynamicPricingService();
+    private final TransactionIdempotencyService idempotencyService = new TransactionIdempotencyService();
 
     public GoldExchangeResult mintToAccount(UUID playerUuid, UUID accountId, ItemStack goldStack, UUID commercialBlockId, String idempotencyKey) throws SQLException {
         return mintToAccount(playerUuid, accountId, List.of(goldStack), commercialBlockId, idempotencyKey);
@@ -31,14 +36,21 @@ public final class GoldExchangeService {
         } catch (RuntimeException exception) {
             return GoldExchangeResult.invalid(GoldExchangeResultType.INVALID_GOLD);
         }
+        String key = IdempotencyKeys.requireValid(idempotencyKey);
+        String fingerprint = RequestFingerprint.of(EconomyTransactionType.GOLD_MINT, playerUuid, accountId, goldUnits, commercialBlockId);
         try (Connection connection = repository.openConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                Optional<GoldExchangeResult> duplicate = writer.completed(connection, idempotencyKey);
-                if (duplicate.isPresent()) {
+                IdempotencyCheck check = idempotencyService.check(connection, key, fingerprint);
+                if (check == IdempotencyCheck.MATCH) {
+                    Optional<GoldExchangeResult> duplicate = writer.completed(connection, key);
                     connection.commit();
-                    return duplicate.get();
+                    return duplicate.orElseGet(() -> GoldExchangeResult.invalid(GoldExchangeResultType.IDEMPOTENCY_CONFLICT));
+                }
+                if (check == IdempotencyCheck.CONFLICT) {
+                    connection.rollback();
+                    return GoldExchangeResult.invalid(GoldExchangeResultType.IDEMPOTENCY_CONFLICT);
                 }
 
                 GoldAccountSnapshot account = repository.lockAccount(connection, accountId).orElse(null);
@@ -53,7 +65,7 @@ public final class GoldExchangeService {
                 long balanceAfter = Math.addExact(account.balance(), moneyAmount);
                 repository.mintReserve(connection, goldUnits, moneyAmount);
                 repository.updateAccountBalance(connection, accountId, balanceAfter);
-                writer.insertTransaction(connection, transactionId, idempotencyKey, EconomyTransactionType.GOLD_MINT, moneyAmount, playerUuid, accountId, commercialBlockId);
+                writer.insertTransaction(connection, transactionId, key, EconomyTransactionType.GOLD_MINT, moneyAmount, playerUuid, accountId, commercialBlockId, fingerprint);
                 writer.insertLedger(connection, transactionId, accountId, LedgerEntryType.CURRENCY_ISSUANCE, moneyAmount, account.balance(), balanceAfter);
                 for (ItemStack stack : goldStacks) {
                     if (stack.isEmpty()) {
@@ -80,14 +92,22 @@ public final class GoldExchangeService {
         } catch (RuntimeException exception) {
             return GoldExchangeResult.invalid(GoldExchangeResultType.INVALID_GOLD);
         }
+        String key = IdempotencyKeys.requireValid(idempotencyKey);
+        String fingerprint = RequestFingerprint.of(EconomyTransactionType.GOLD_MINT, playerUuid,
+                SystemAccountIds.CURRENCY_ISSUANCE, goldUnits, commercialBlockId, "cash");
         try (Connection connection = repository.openConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                Optional<GoldExchangeResult> duplicate = writer.completed(connection, idempotencyKey);
-                if (duplicate.isPresent()) {
+                IdempotencyCheck check = idempotencyService.check(connection, key, fingerprint);
+                if (check == IdempotencyCheck.MATCH) {
+                    Optional<GoldExchangeResult> duplicate = writer.completed(connection, key);
                     connection.commit();
-                    return duplicate.get();
+                    return duplicate.orElseGet(() -> GoldExchangeResult.invalid(GoldExchangeResultType.IDEMPOTENCY_CONFLICT));
+                }
+                if (check == IdempotencyCheck.CONFLICT) {
+                    connection.rollback();
+                    return GoldExchangeResult.invalid(GoldExchangeResultType.IDEMPOTENCY_CONFLICT);
                 }
 
                 GoldAccountSnapshot issuanceAccount = repository.lockAnyAccount(connection, SystemAccountIds.CURRENCY_ISSUANCE).orElse(null);
@@ -102,7 +122,7 @@ public final class GoldExchangeService {
                 long balanceAfter = Math.addExact(issuanceAccount.balance(), moneyAmount);
                 repository.mintReserve(connection, goldUnits, moneyAmount);
                 repository.updateAccountBalance(connection, SystemAccountIds.CURRENCY_ISSUANCE, balanceAfter);
-                writer.insertTransaction(connection, transactionId, idempotencyKey, EconomyTransactionType.GOLD_MINT, moneyAmount, playerUuid, SystemAccountIds.CURRENCY_ISSUANCE, commercialBlockId);
+                writer.insertTransaction(connection, transactionId, key, EconomyTransactionType.GOLD_MINT, moneyAmount, playerUuid, SystemAccountIds.CURRENCY_ISSUANCE, commercialBlockId, fingerprint);
                 writer.insertLedger(connection, transactionId, SystemAccountIds.CURRENCY_ISSUANCE, LedgerEntryType.CURRENCY_ISSUANCE, moneyAmount, issuanceAccount.balance(), balanceAfter);
                 for (ItemStack stack : goldStacks) {
                     if (stack.isEmpty()) {
@@ -125,14 +145,22 @@ public final class GoldExchangeService {
     public GoldExchangeResult redeemFromAccount(UUID playerUuid, UUID accountId, long goldUnits, UUID commercialBlockId, String idempotencyKey) throws SQLException {
         long moneyAmount = GoldUnitConverter.moneyAmount(goldUnits, EconomyServerConfig.BANK_GOLD_NUGGET_VALUE.get());
 
+        String key = IdempotencyKeys.requireValid(idempotencyKey);
+        String fingerprint = RequestFingerprint.of(EconomyTransactionType.GOLD_REDEMPTION, playerUuid,
+                accountId, goldUnits, commercialBlockId);
         try (Connection connection = repository.openConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                Optional<GoldExchangeResult> duplicate = writer.completed(connection, idempotencyKey);
-                if (duplicate.isPresent()) {
+                IdempotencyCheck check = idempotencyService.check(connection, key, fingerprint);
+                if (check == IdempotencyCheck.MATCH) {
+                    Optional<GoldExchangeResult> duplicate = writer.completed(connection, key);
                     connection.commit();
-                    return duplicate.get();
+                    return duplicate.orElseGet(() -> GoldExchangeResult.invalid(GoldExchangeResultType.IDEMPOTENCY_CONFLICT));
+                }
+                if (check == IdempotencyCheck.CONFLICT) {
+                    connection.rollback();
+                    return GoldExchangeResult.invalid(GoldExchangeResultType.IDEMPOTENCY_CONFLICT);
                 }
 
                 GoldAccountSnapshot account = repository.lockAccount(connection, accountId).orElse(null);
@@ -154,7 +182,7 @@ public final class GoldExchangeService {
                 long balanceAfter = account.balance() - moneyAmount;
                 repository.redeemReserve(connection, goldUnits, moneyAmount);
                 repository.updateAccountBalance(connection, accountId, balanceAfter);
-                writer.insertTransaction(connection, transactionId, idempotencyKey, EconomyTransactionType.GOLD_REDEMPTION, moneyAmount, playerUuid, accountId, commercialBlockId);
+                writer.insertTransaction(connection, transactionId, key, EconomyTransactionType.GOLD_REDEMPTION, moneyAmount, playerUuid, accountId, commercialBlockId, fingerprint);
                 writer.insertLedger(connection, transactionId, accountId, LedgerEntryType.CURRENCY_REDEMPTION, moneyAmount, account.balance(), balanceAfter);
                 writer.insertGoldEntry(connection, transactionId, playerUuid, "REDEMPTION", "minecraft:gold_nugget", goldUnits, goldUnits, EconomyServerConfig.BANK_GOLD_NUGGET_VALUE.get(), moneyAmount, commercialBlockId);
                 connection.commit();

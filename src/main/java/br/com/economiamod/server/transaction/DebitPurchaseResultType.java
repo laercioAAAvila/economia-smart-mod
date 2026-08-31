@@ -3,6 +3,7 @@ package br.com.economiamod.server.transaction;
 public enum DebitPurchaseResultType {
     COMPLETED,
     DUPLICATE_COMPLETED,
+    IDEMPOTENCY_CONFLICT,
     INVALID_CARD,
     DEBIT_NOT_ALLOWED,
     INSUFFICIENT_BALANCE,

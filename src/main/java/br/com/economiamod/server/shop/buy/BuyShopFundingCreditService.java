@@ -6,7 +6,12 @@ import br.com.economiamod.common.credit.CreditLimitPolicy;
 import br.com.economiamod.common.credit.CreditMath;
 import br.com.economiamod.server.persistence.EconomyDatabase;
 import br.com.economiamod.server.transaction.CreditPurchaseResult;
+import br.com.economiamod.server.transaction.IdempotencyCheck;
+import br.com.economiamod.server.transaction.IdempotencyKeys;
 import br.com.economiamod.server.transaction.LedgerEntryType;
+import br.com.economiamod.server.transaction.RequestFingerprint;
+import br.com.economiamod.server.transaction.EconomyTransactionType;
+import br.com.economiamod.server.transaction.TransactionOrigin;
 import br.com.economiamod.server.transaction.PaymentAccountRepository;
 import br.com.economiamod.server.transaction.PaymentAccountSnapshot;
 import br.com.economiamod.server.transaction.PaymentTransactionWriter;
@@ -24,9 +29,17 @@ public final class BuyShopFundingCreditService {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                if (transactionWriter.completedTransactionExists(connection, idempotencyKey)) {
+                String key = IdempotencyKeys.requireValid(idempotencyKey);
+                String fingerprint = RequestFingerprint.of(EconomyTransactionType.CREDIT_PURCHASE,
+                        initiatorPlayerUuid, cardId, amount, merchantName);
+                IdempotencyCheck idempotency = transactionWriter.idempotencyCheck(connection, key, fingerprint);
+                if (idempotency == IdempotencyCheck.MATCH) {
                     connection.commit();
                     return CreditPurchaseResult.duplicateCompleted();
+                }
+                if (idempotency == IdempotencyCheck.CONFLICT) {
+                    connection.rollback();
+                    return CreditPurchaseResult.idempotencyConflict();
                 }
 
                 cardRepository.lockCard(connection, cardId);
@@ -49,7 +62,9 @@ public final class BuyShopFundingCreditService {
 
                 UUID transactionId = UUID.randomUUID();
                 accountRepository.increaseCreditPrincipal(connection, card.accountId(), card.cardId(), amount);
-                transactionWriter.insertCreditTransaction(connection, transactionId, idempotencyKey, amount, initiatorPlayerUuid, card.accountId(), null, card.cardId());
+                transactionWriter.insertCreditTransaction(connection, transactionId, key, amount,
+                        initiatorPlayerUuid, card.accountId(), null, card.cardId(), fingerprint,
+                        TransactionOrigin.MINECRAFT);
                 transactionWriter.insertLedger(connection, transactionId, card.accountId(), LedgerEntryType.CREDIT_PRINCIPAL_INCREASE, amount, account.balance(), account.balance());
                 transactionWriter.insertCardPurchaseEntry(connection, transactionId, card.cardId(), amount, merchantName);
                 connection.commit();

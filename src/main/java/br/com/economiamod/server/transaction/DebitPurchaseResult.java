@@ -9,6 +9,10 @@ public record DebitPurchaseResult(DebitPurchaseResultType type) {
         return new DebitPurchaseResult(DebitPurchaseResultType.DUPLICATE_COMPLETED);
     }
 
+    public static DebitPurchaseResult idempotencyConflict() {
+        return new DebitPurchaseResult(DebitPurchaseResultType.IDEMPOTENCY_CONFLICT);
+    }
+
     public static DebitPurchaseResult invalidCard() {
         return new DebitPurchaseResult(DebitPurchaseResultType.INVALID_CARD);
     }

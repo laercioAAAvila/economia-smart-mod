@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Visão geral | Economia Smart</title>
+  <link rel="icon" href="../assets/logo.png">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/pages.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside id="sidebar"></aside>
+    <main class="main">
+      <div class="content">
+        <div id="mobileHeader"></div>
+        <header class="topbar">
+          <div><h1>Visão geral</h1><p class="page-description">Acompanhe sua conta bancária do servidor em um único painel.</p></div>
+        </header>
+        <div id="notice" class="notice hidden" role="status"></div>
+        
+<section class="grid metrics">
+  <article class="card metric"><span class="metric-label">Saldo em conta</span><strong id="balance" class="metric-value">—</strong><span class="metric-foot">Saldo contábil atual</span></article>
+  <article class="card metric"><span class="metric-label">Disponível</span><strong id="availableBalance" class="metric-value">—</strong><span class="metric-foot">Após compromissos de crédito</span></article>
+  <article class="card metric"><span class="metric-label">Crédito disponível</span><strong id="creditAvailable" class="metric-value">—</strong><span class="metric-foot">Limite global livre</span></article>
+  <article class="card metric"><span class="metric-label">Dívida total</span><strong id="totalDebt" class="metric-value">—</strong><span class="metric-foot">Principal + juros</span></article>
+</section>
+<section class="grid two-columns quick-grid">
+  <article class="card">
+    <div class="section-head"><h2>Conta</h2><a class="button secondary" href="./transferencias.html">Transferir</a></div>
+    <div class="detail-list"><div class="detail"><span>Número da conta</span><strong id="accountNumber">—</strong></div><div class="detail"><span>Cartões vinculados</span><strong id="cardCount">—</strong></div></div>
+  </article>
+  <article class="card gold-card">
+    <div class="section-head"><h2>Cotação do ouro</h2><a class="button secondary" href="./ouro.html">Ver cotação</a></div>
+    <div class="detail-list"><div class="detail"><span>Pepita</span><strong id="goldNugget" class="gold-value">—</strong></div><div class="detail"><span>Índice atual</span><strong id="goldPercent">—</strong></div></div>
+  </article>
+</section>
+<section class="card mt-16"><div class="section-head"><h2>Movimentações recentes</h2><a class="button secondary" href="./historico.html">Histórico completo</a></div><div id="recentTransactions"></div></section>
+
+      </div>
+    </main>
+  </div>
+  <script type="module" src="../js/dashboard.js"></script>
+</body>
+</html>

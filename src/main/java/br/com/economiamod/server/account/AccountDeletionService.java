@@ -10,6 +10,10 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.UUID;
 
+/**
+ * Administrative account close. Financial history is deliberately retained: deleting ledger rows,
+ * transactions or cards would destroy the accounting trail and can hide/lose player assets.
+ */
 public final class AccountDeletionService {
     private final AuditLogService auditLogService = new AuditLogService();
 
@@ -25,23 +29,34 @@ public final class AccountDeletionService {
                     connection.rollback();
                     return AccountDeletionResult.notFound();
                 }
+                if ("CLOSED".equals(target.status())) {
+                    connection.rollback();
+                    return AccountDeletionResult.of(AccountDeletionResultType.ALREADY_CLOSED, target, 0);
+                }
+                if (target.hasFundsOrDebt()) {
+                    connection.rollback();
+                    return AccountDeletionResult.of(AccountDeletionResultType.HAS_BALANCE_OR_DEBT, target, 0);
+                }
 
-                int affectedRows = purgeAccountData(connection, target);
+                int affectedRows = 0;
+                affectedRows += detachCommercialBlocks(connection, target.accountId());
+                affectedRows += disableCards(connection, target.accountId());
+                affectedRows += closeAccount(connection, target.accountId());
                 auditLogService.recordAdminChange(
                         connection,
                         adminPlayerUuid,
-                        "ACCOUNT_DELETE",
+                        "ACCOUNT_CLOSE",
                         "ACCOUNT",
                         target.accountId(),
                         target.username() + " (" + target.accountNumber() + ")",
-                        "DELETED"
+                        "CLOSED"
                 );
                 connection.commit();
 
                 if (target.playerUuid() != null) {
                     BankSessionService.INSTANCE.logout(target.playerUuid(), target.accountId());
                 }
-                return AccountDeletionResult.deleted(target, affectedRows);
+                return AccountDeletionResult.of(AccountDeletionResultType.CLOSED, target, affectedRows);
             } catch (SQLException | RuntimeException exception) {
                 connection.rollback();
                 throw exception;
@@ -56,8 +71,12 @@ public final class AccountDeletionService {
                 SELECT id,
                        player_uuid,
                        username,
-                       account_number
-                 FROM economy_accounts
+                       account_number,
+                       status,
+                       balance,
+                       credit_principal_outstanding,
+                       credit_interest_outstanding
+                  FROM economy_accounts
                  WHERE account_type = 'PLAYER'
                    AND server_uuid = ?
                    AND username_normalized = ?
@@ -75,24 +94,14 @@ public final class AccountDeletionService {
                         resultSet.getObject("id", UUID.class),
                         resultSet.getObject("player_uuid", UUID.class),
                         resultSet.getString("username"),
-                        resultSet.getString("account_number")
+                        resultSet.getString("account_number"),
+                        resultSet.getString("status"),
+                        resultSet.getLong("balance"),
+                        resultSet.getLong("credit_principal_outstanding"),
+                        resultSet.getLong("credit_interest_outstanding")
                 );
             }
         }
-    }
-
-    private int purgeAccountData(Connection connection, AccountDeletionTarget target) throws SQLException {
-        int affectedRows = 0;
-        affectedRows += detachCommercialBlocks(connection, target.accountId());
-        affectedRows += deletePreviousAuditLogs(connection, target);
-        affectedRows += deleteGoldExchangeEntries(connection, target);
-        affectedRows += deleteCardEntries(connection, target.accountId());
-        affectedRows += deleteInterestAccruals(connection, target.accountId());
-        affectedRows += deleteLedgerEntries(connection, target.accountId());
-        affectedRows += detachTransactions(connection, target.accountId());
-        affectedRows += deleteCards(connection, target.accountId());
-        affectedRows += deleteAccount(connection, target.accountId());
-        return affectedRows;
     }
 
     private int detachCommercialBlocks(Connection connection, UUID accountId) throws SQLException {
@@ -116,102 +125,24 @@ public final class AccountDeletionService {
         }
     }
 
-    private int deletePreviousAuditLogs(Connection connection, AccountDeletionTarget target) throws SQLException {
-        String sql = """
-                DELETE FROM economy_audit_logs
-                 WHERE target_type = 'ACCOUNT'
-                   AND target_id = ?
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, target.accountId());
-            return statement.executeUpdate();
-        }
-    }
-
-    private int deleteGoldExchangeEntries(Connection connection, AccountDeletionTarget target) throws SQLException {
-        return deleteGoldExchangeEntriesByAccountTransactions(connection, target.accountId());
-    }
-
-    private int deleteGoldExchangeEntriesByAccountTransactions(Connection connection, UUID accountId) throws SQLException {
-        String sql = """
-                DELETE FROM economy_gold_exchange_entries
-                 WHERE transaction_id IN (
-                        SELECT id
-                          FROM economy_transactions
-                         WHERE source_account_id = ?
-                            OR destination_account_id = ?
-                            OR card_id IN (SELECT id FROM economy_cards WHERE account_id = ?)
-                    )
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, accountId);
-            statement.setObject(2, accountId);
-            statement.setObject(3, accountId);
-            return statement.executeUpdate();
-        }
-    }
-
-    private int deleteCardEntries(Connection connection, UUID accountId) throws SQLException {
-        String sql = "DELETE FROM economy_card_entries WHERE card_id IN (SELECT id FROM economy_cards WHERE account_id = ?)";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+    private int disableCards(Connection connection, UUID accountId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE economy_cards
+                   SET status = 'DISABLED', disabled_at = CURRENT_TIMESTAMP,
+                       updated_at = CURRENT_TIMESTAMP, security_version = security_version + 1
+                 WHERE account_id = ? AND status <> 'DISABLED'
+                """)) {
             statement.setObject(1, accountId);
             return statement.executeUpdate();
         }
     }
 
-    private int deleteInterestAccruals(Connection connection, UUID accountId) throws SQLException {
-        String sql = """
-                DELETE FROM economy_interest_accruals
-                 WHERE account_id = ?
-                    OR card_id IN (SELECT id FROM economy_cards WHERE account_id = ?)
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, accountId);
-            statement.setObject(2, accountId);
-            return statement.executeUpdate();
-        }
-    }
-
-    private int deleteLedgerEntries(Connection connection, UUID accountId) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("DELETE FROM economy_ledger_entries WHERE account_id = ?")) {
-            statement.setObject(1, accountId);
-            return statement.executeUpdate();
-        }
-    }
-
-    private int detachTransactions(Connection connection, UUID accountId) throws SQLException {
-        String sql = """
-                UPDATE economy_transactions
-                   SET source_account_id = CASE WHEN source_account_id = ? THEN NULL ELSE source_account_id END,
-                       destination_account_id = CASE WHEN destination_account_id = ? THEN NULL ELSE destination_account_id END,
-                       card_id = CASE
-                           WHEN card_id IN (SELECT id FROM economy_cards WHERE account_id = ?) THEN NULL
-                           ELSE card_id
-                       END
-                 WHERE source_account_id = ?
-                    OR destination_account_id = ?
-                    OR card_id IN (SELECT id FROM economy_cards WHERE account_id = ?)
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, accountId);
-            statement.setObject(2, accountId);
-            statement.setObject(3, accountId);
-            statement.setObject(4, accountId);
-            statement.setObject(5, accountId);
-            statement.setObject(6, accountId);
-            return statement.executeUpdate();
-        }
-    }
-
-    private int deleteCards(Connection connection, UUID accountId) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("DELETE FROM economy_cards WHERE account_id = ?")) {
-            statement.setObject(1, accountId);
-            return statement.executeUpdate();
-        }
-    }
-
-    private int deleteAccount(Connection connection, UUID accountId) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("DELETE FROM economy_accounts WHERE id = ?")) {
+    private int closeAccount(Connection connection, UUID accountId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE economy_accounts
+                   SET status = 'CLOSED', updated_at = CURRENT_TIMESTAMP, version = version + 1
+                 WHERE id = ? AND status <> 'CLOSED'
+                """)) {
             statement.setObject(1, accountId);
             return statement.executeUpdate();
         }

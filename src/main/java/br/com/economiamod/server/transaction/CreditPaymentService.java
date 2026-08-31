@@ -44,9 +44,17 @@ public final class CreditPaymentService {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                if (transactionWriter.completedTransactionExists(connection, idempotencyKey)) {
+                String key = IdempotencyKeys.requireValid(idempotencyKey);
+                String fingerprint = RequestFingerprint.of(EconomyTransactionType.CREDIT_PURCHASE, playerUuid,
+                        card.cardId(), card.accountId(), destinationAccountId, amount);
+                IdempotencyCheck idempotency = transactionWriter.idempotencyCheck(connection, key, fingerprint);
+                if (idempotency == IdempotencyCheck.MATCH) {
                     connection.commit();
                     return CreditPurchaseResult.duplicateCompleted();
+                }
+                if (idempotency == IdempotencyCheck.CONFLICT) {
+                    connection.rollback();
+                    return CreditPurchaseResult.idempotencyConflict();
                 }
 
                 accountRepository.lockAccountsOrdered(connection, card.accountId(), destinationAccountId);
@@ -72,7 +80,9 @@ public final class CreditPaymentService {
                 long destinationAfter = Math.addExact(destination.balance(), amount);
                 accountRepository.increaseCreditPrincipal(connection, card.accountId(), card.cardId(), amount);
                 accountRepository.updateBalance(connection, destinationAccountId, destinationAfter);
-                transactionWriter.insertCreditTransaction(connection, transactionId, idempotencyKey, amount, playerUuid, card.accountId(), destinationAccountId, card.cardId());
+                transactionWriter.insertCreditTransaction(connection, transactionId, key, amount, playerUuid,
+                        card.accountId(), destinationAccountId, card.cardId(), fingerprint,
+                        TransactionOrigin.MINECRAFT);
                 transactionWriter.insertLedger(connection, transactionId, card.accountId(), LedgerEntryType.CREDIT_PRINCIPAL_INCREASE, amount, source.balance(), source.balance());
                 transactionWriter.insertLedger(connection, transactionId, destinationAccountId, LedgerEntryType.CREDIT, amount, destination.balance(), destinationAfter);
                 transactionWriter.insertCardPurchaseEntry(connection, transactionId, card.cardId(), amount, merchantName);

@@ -27,7 +27,8 @@ public enum SecureAccountAction {
     DISABLE_CARD_BY_ID(23),
     DEPOSIT(24),
     OPERATION_HISTORY(25),
-    SET_ACCOUNT_OPENING_MODE(26);
+    SET_ACCOUNT_OPENING_MODE(26),
+    WEB_LOGIN_TOKEN(27);
 
     private final int id;
 

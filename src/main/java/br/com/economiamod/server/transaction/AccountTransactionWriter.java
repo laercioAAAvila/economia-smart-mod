@@ -35,13 +35,24 @@ public final class AccountTransactionWriter {
         }
     }
 
-    public void insertTransaction(Connection connection, UUID transactionId, String idempotencyKey, EconomyTransactionType transactionType, long amount, UUID playerUuid, UUID sourceAccountId, UUID destinationAccountId) throws SQLException {
+    public void insertTransaction(Connection connection, UUID transactionId, String idempotencyKey,
+                                  EconomyTransactionType transactionType, long amount, UUID playerUuid,
+                                  UUID sourceAccountId, UUID destinationAccountId) throws SQLException {
+        insertTransaction(connection, transactionId, idempotencyKey, transactionType, amount, playerUuid,
+                sourceAccountId, destinationAccountId, null, TransactionOrigin.MINECRAFT);
+    }
+
+    public void insertTransaction(Connection connection, UUID transactionId, String idempotencyKey,
+                                  EconomyTransactionType transactionType, long amount, UUID playerUuid,
+                                  UUID sourceAccountId, UUID destinationAccountId, String requestFingerprint,
+                                  TransactionOrigin origin) throws SQLException {
         String sql = """
                 INSERT INTO economy_transactions(
                     id, idempotency_key, transaction_type, status, amount, initiator_player_uuid,
-                    source_account_id, destination_account_id, created_at, completed_at
+                    source_account_id, destination_account_id, request_fingerprint, origin,
+                    created_at, completed_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, transactionId);
@@ -52,11 +63,14 @@ public final class AccountTransactionWriter {
             statement.setObject(6, playerUuid);
             statement.setObject(7, sourceAccountId);
             statement.setObject(8, destinationAccountId);
+            statement.setString(9, requestFingerprint);
+            statement.setString(10, origin.name());
             statement.executeUpdate();
         }
     }
 
-    public void insertLedger(Connection connection, UUID transactionId, UUID accountId, LedgerEntryType entryType, long amount, long balanceBefore, long balanceAfter) throws SQLException {
+    public void insertLedger(Connection connection, UUID transactionId, UUID accountId, LedgerEntryType entryType,
+                             long amount, long balanceBefore, long balanceAfter) throws SQLException {
         String sql = """
                 INSERT INTO economy_ledger_entries(
                     id, transaction_id, account_id, entry_type, amount, balance_before, balance_after, created_at
@@ -84,4 +98,3 @@ public final class AccountTransactionWriter {
         }
     }
 }
-

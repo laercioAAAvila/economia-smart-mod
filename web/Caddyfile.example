@@ -1,0 +1,23 @@
+# Troque pelo seu dominio. O Caddy obtem/renova HTTPS automaticamente quando o DNS aponta para o servidor.
+economia.example.com {
+    @api path /api/*
+    handle @api {
+        reverse_proxy 127.0.0.1:8765 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    handle {
+        root * /srv/economia-web
+        try_files {path} /index.html
+        file_server
+    }
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    }
+}

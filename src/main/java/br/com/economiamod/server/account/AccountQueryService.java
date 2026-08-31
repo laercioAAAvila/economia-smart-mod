@@ -145,4 +145,25 @@ public final class AccountQueryService {
             }
         }
     }
+    public Optional<UUID> findActivePlayerUuid(UUID accountId) throws SQLException {
+        String sql = """
+                SELECT player_uuid
+                  FROM economy_accounts
+                 WHERE id = ?
+                   AND server_uuid = ?
+                   AND account_type = 'PLAYER'
+                   AND status = 'ACTIVE'
+                """;
+        try (Connection connection = EconomyDatabase.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setObject(1, accountId);
+            statement.setObject(2, BankServerIdentityService.INSTANCE.current());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next()
+                        ? Optional.ofNullable(resultSet.getObject("player_uuid", UUID.class))
+                        : Optional.empty();
+            }
+        }
+    }
+
 }

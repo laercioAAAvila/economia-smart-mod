@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Entrar | Economia Smart</title>
+  <link rel="icon" href="../assets/logo.png">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/pages.css">
+</head>
+<body class="login-page">
+  <section class="login-visual">
+    <div class="login-brand"><img src="../assets/logo.png" alt=""><div><strong>Economia Smart</strong><span>Internet Banking do servidor</span></div></div>
+    <div class="login-copy">
+      <h1>Sua economia do jogo, quando você estiver fora dele.</h1>
+      <p>Consulte saldo, histórico, cartões, crédito, faturas e cotação do ouro. Faça transferências usando a mesma conta bancária do Minecraft, sem enviar sua senha para o website.</p>
+    </div>
+    <p class="login-security">No ATM do jogo, abra Segurança e clique em “Token web”. O código é de uso único, expira rapidamente e é trocado por uma sessão Bearer temporária.</p>
+  </section>
+  <main class="login-panel">
+    <section class="login-box" aria-labelledby="loginTitle">
+      <div class="login-brand mb-28"><img src="../assets/logo.png" alt=""><div><strong>Economia Smart</strong><span>Acesso seguro</span></div></div>
+      <h2 id="loginTitle">Entrar com token</h2>
+      <p>Gere um token no ATM dentro do Minecraft e informe o código abaixo.</p>
+      <div id="notice" class="notice error hidden" role="alert"></div>
+      <form id="loginForm" autocomplete="off">
+        <label>Token de acesso<input id="loginToken" name="token" inputmode="text" autocomplete="off" maxlength="19" placeholder="ABCD-EFGH-JKLM-NPQR" spellcheck="false" required><span class="input-help">ATM → Segurança → Token web. O código vale por 120 segundos e só pode ser usado uma vez.</span></label>
+        <button class="button" type="submit">Entrar com token</button>
+      </form>
+      <p class="input-help mt-16">Depois da validação, o token de uso único é destruído. O navegador recebe apenas uma sessão temporária, armazenada em <code>sessionStorage</code>.</p>
+    </section>
+  </main>
+  <script type="module" src="../js/login.js"></script>
+</body>
+</html>

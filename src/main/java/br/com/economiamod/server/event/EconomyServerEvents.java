@@ -24,6 +24,7 @@ import br.com.economiamod.server.persistence.migration.MigrationResourceLoader;
 import br.com.economiamod.server.persistence.migration.SqlMigrationExecutor;
 import br.com.economiamod.server.persistence.migration.VerifiedMigration;
 import br.com.economiamod.server.session.BankSessionService;
+import br.com.economiamod.server.web.WebEconomyApi;
 import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -39,15 +40,19 @@ public final class EconomyServerEvents {
     }
 
     public static void onServerStarting(ServerStartingEvent event) {
-        int knownMigrations = MigrationCatalog.all().size();
-        EconomyDatabaseState.initializing(knownMigrations);
+        int knownMigrations = 0;
+        DatabaseSettings previewSettings = null;
         DatabaseSettings databaseSettings = null;
-        String initializationStage = "carregamento_das_migracoes";
+        String initializationStage = "leitura_da_configuracao";
 
         try {
-            List<VerifiedMigration> verifiedMigrations = new MigrationCatalogVerifier(new MigrationResourceLoader()).verifyCatalog();
+            previewSettings = DatabaseSettings.fromConfig(event.getServer());
+            knownMigrations = MigrationCatalog.all(previewSettings.engine()).size();
+            EconomyDatabaseState.initializing(knownMigrations);
+            initializationStage = "carregamento_das_migracoes";
+            List<VerifiedMigration> verifiedMigrations = new MigrationCatalogVerifier(new MigrationResourceLoader()).verifyCatalog(previewSettings.engine());
             initializationStage = "leitura_da_configuracao";
-            databaseSettings = DatabaseSettings.fromConfig();
+            databaseSettings = previewSettings;
             initializationStage = "conexao_com_o_banco";
             EconomyDatabase.open(databaseSettings);
             initializationStage = "aplicacao_das_migracoes";
@@ -65,7 +70,12 @@ public final class EconomyServerEvents {
             ClaimAnchorChunkLoaderService.INSTANCE.refresh(event.getServer());
             recoverOperations();
             EconomyDatabaseState.available(verifiedMigrations.size());
-            EconomiaMod.LOGGER.info("Economia Mod conectou ao SQL e aplicou/verificou {} migracoes.", verifiedMigrations.size());
+            try {
+                WebEconomyApi.INSTANCE.startIfEnabled();
+            } catch (IOException | RuntimeException webException) {
+                EconomiaMod.LOGGER.error("Web API nao foi iniciada. O banco do jogo continua disponivel.", webException);
+            }
+            EconomiaMod.LOGGER.info("Economia Mod conectou ao banco {} e aplicou/verificou {} migracoes.", databaseSettings.engine(), verifiedMigrations.size());
         } catch (IOException exception) {
             EconomyDatabaseState.unavailable("Falha ao carregar migracoes SQL: " + exception.getMessage(), knownMigrations);
             EconomiaMod.LOGGER.error(
@@ -105,14 +115,14 @@ public final class EconomyServerEvents {
         if (settings == null) {
             return "nao_configurado";
         }
-        return "%s:%d/%s".formatted(settings.host(), settings.port(), settings.name());
+        return settings.safeTarget();
     }
 
     private static void recoverOperations() throws SQLException {
         OperationRecoveryResult recovery = new OperationRecoveryService().recoverStaleOperations(Instant.now());
         if (recovery.totalTouched() > 0) {
             EconomiaMod.LOGGER.warn(
-                    "Recuperacao de operacoes: {} revertidas, {} concluidas, {} exigem rollback.",
+                    "Recuperacao de operacoes: {} revertidas, {} concluidas, {} exigem reconciliacao manual.",
                     recovery.rolledBack() + recovery.financiallyReversed(),
                     recovery.completed(),
                     recovery.rollbackRequired()
@@ -121,13 +131,21 @@ public final class EconomyServerEvents {
     }
 
     public static void onServerStopped(net.neoforged.neoforge.event.server.ServerStoppedEvent event) {
+        WebEconomyApi.INSTANCE.stop();
         ClaimAnchorChunkLoaderService.INSTANCE.stop(event.getServer());
         ServerActiveClockService.INSTANCE.stop();
+        DatabaseSettings settings = null;
+        try {
+            settings = DatabaseSettings.fromConfig(event.getServer());
+        } catch (RuntimeException ignored) {
+            // Estado de parada deve ser seguro mesmo com configuracao invalida.
+        }
         EconomyDatabase.close();
         BankSessionService.INSTANCE.clear();
         ClaimPurchaseSessionService.INSTANCE.clearAll();
         BankServerIdentityService.INSTANCE.clear();
-        EconomyDatabaseState.unavailable("Servidor parado. Persistencia SQL fechada.", MigrationCatalog.all().size());
+        int migrations = settings == null ? 0 : MigrationCatalog.all(settings.engine()).size();
+        EconomyDatabaseState.unavailable("Servidor parado. Persistencia SQL fechada.", migrations);
     }
 
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {

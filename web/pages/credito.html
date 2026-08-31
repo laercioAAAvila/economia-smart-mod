@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Crédito e faturas | Economia Smart</title>
+  <link rel="icon" href="../assets/logo.png">
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/layout.css">
+  <link rel="stylesheet" href="../css/components.css">
+  <link rel="stylesheet" href="../css/pages.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside id="sidebar"></aside>
+    <main class="main">
+      <div class="content">
+        <div id="mobileHeader"></div>
+        <header class="topbar">
+          <div><h1>Crédito e faturas</h1><p class="page-description">Acompanhe limite, dívida, juros e os lançamentos abertos da sua conta.</p></div>
+        </header>
+        <div id="notice" class="notice hidden" role="status"></div>
+        
+<section class="grid metrics">
+  <article class="card metric"><span class="metric-label">Limite configurado</span><strong id="configuredLimit" class="metric-value">—</strong><span class="metric-foot">Limite da conta</span></article>
+  <article class="card metric"><span class="metric-label">Crédito disponível</span><strong id="availableCredit" class="metric-value">—</strong><span class="metric-foot">Disponível para novas compras</span></article>
+  <article class="card metric"><span class="metric-label">Principal em aberto</span><strong id="principal" class="metric-value">—</strong><span class="metric-foot">Sem juros</span></article>
+  <article class="card metric"><span class="metric-label">Juros em aberto</span><strong id="interest" class="metric-value">—</strong><span class="metric-foot">Juros acumulados</span></article>
+</section>
+<section class="grid two-columns mt-16"><article class="card"><h2>Resumo da fatura</h2><div class="detail-list"><div class="detail"><span>Total em aberto</span><strong id="totalDebt">—</strong></div><div class="detail"><span>Vencimento</span><strong id="dueDay">—</strong></div></div></article><article class="card"><h2>Uso no website</h2><p class="page-description">Esta área é de consulta. Pagamentos que dependam das regras específicas do jogo continuam sendo executados pelo servidor do mod.</p></article></section>
+<section class="card mt-16"><div class="section-head"><h2>Lançamentos em aberto</h2></div><div id="invoiceEntries"></div></section>
+
+      </div>
+    </main>
+  </div>
+  <script type="module" src="../js/credito.js"></script>
+</body>
+</html>

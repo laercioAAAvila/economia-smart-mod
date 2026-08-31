@@ -1,91 +1,69 @@
 # Economia Smart Mod
 
-## English
+Mod de economia para Minecraft NeoForge 1.21.1, Java 21. Inclui contas bancarias, ATM, dinheiro fisico, cartoes, lojas, correio, claims, transferencias e troca de ouro.
 
-Economia Smart Mod adds a server-oriented economy system for Minecraft NeoForge. It includes bank accounts, ATM screens, debit/credit cards, physical banknotes, player shops, transfers, and gold exchange through the bank counter.
+## Banco de dados
 
-### Requirements
+Por padrao o mod usa **SQLite**, sem servidor externo:
 
-- Minecraft with NeoForge
-- Java 21
-- PostgreSQL
-
-PostgreSQL is required to run the mod. The mod stores accounts, cards, balances, shops, inventories, transactions, and gold exchange data in SQL.
-
-### PostgreSQL with Docker
-
-This repository includes a `docker-compose.yml` for local PostgreSQL.
-
-Set a local password before starting it:
-
-```powershell
-$env:POSTGRES_PASSWORD="change-this-password"
-docker compose up -d
+```toml
+[database]
+type = "sqlite"
+sqliteFile = "economia/economia.db"
 ```
 
-Default Docker database values:
+O arquivo relativo fica dentro do save atual (`<world>/economia/economia.db`). Para website/API use PostgreSQL:
 
-- Host: `localhost`
-- Port: `55432`
-- Database: `economia`
-- User: `economia`
-- Password: value from `POSTGRES_PASSWORD`
+```toml
+[database]
+type = "postgresql" # aliases: postgres, pgsql
+host = "127.0.0.1"
+port = 5432
+name = "economia"
+username = "economia"
+password = ""
+ssl = false
+```
 
-Configure the mod server config with the same PostgreSQL values.
+Trocar `database.type` nao migra dados automaticamente.
 
-### Main Features
+## Website
 
-- Bank account creation and login
-- ATM for balance, deposits, withdrawals, cards, credit, and transfers
-- Debit, credit, and debit/credit cards
-- Physical banknotes
-- Sell shops and buy shops between players
-- Card or cash payments in shops
-- Bank counter for exchanging gold
-- Dynamic gold pricing based on demand
-- SQL persistence for multiplayer servers
+A Web API fica **desativada por padrao** e so inicia em PostgreSQL. Quando quiser publicar o Internet Banking:
 
-## Portugues
+```toml
+[webApi]
+enabled = true
+bind = "127.0.0.1"
+port = 8765
+allowedOrigin = "https://economia.example.com"
+```
 
-Economia Smart Mod adiciona um sistema de economia para Minecraft NeoForge focado em servidores. O mod inclui contas bancarias, caixa eletronico, cartoes, dinheiro em especie, lojas entre jogadores, transferencias e troca de ouro pela bancada do banco.
+O login web **nao envia a senha da conta pela Internet**. O jogador entra no ATM do Minecraft, abre **Seguranca -> Token web**, recebe um codigo de uso unico valido por 120 segundos e informa esse codigo no site. A API troca o codigo por um Bearer token temporario.
 
-### Requisitos
+Paginas web: visao geral/saldo, transferencias, historico, cartoes, credito/faturas, cotacao do ouro e seguranca da sessao. Nao existem saque, deposito ou troca de senha na web. Operacoes fisicas continuam no Minecraft.
 
-- Minecraft com NeoForge
-- Java 21
-- PostgreSQL
+O frontend estatico esta organizado em `web/pages`, `web/css`, `web/js` e `web/assets`. Publique-o por HTTPS e encaminhe `/api/*` para `127.0.0.1:8765`. Nunca exponha PostgreSQL ou a porta interna da API diretamente para a Internet.
 
-PostgreSQL e obrigatorio para rodar o mod. O mod salva contas, cartoes, saldos, lojas, inventarios, transacoes e dados da troca de ouro no banco SQL.
+## PostgreSQL com Docker
 
-### PostgreSQL com Docker
-
-Este repositorio inclui um `docker-compose.yml` para subir PostgreSQL local.
-
-Defina uma senha local antes de iniciar:
+O `docker-compose.yml` e para desenvolvimento/local. Defina uma senha antes de iniciar:
 
 ```powershell
 $env:POSTGRES_PASSWORD="troque-esta-senha"
 docker compose up -d
 ```
 
-Valores padrao do banco no Docker:
+## Seguranca economica
 
-- Host: `localhost`
-- Porta: `55432`
-- Banco: `economia`
-- Usuario: `economia`
-- Senha: valor definido em `POSTGRES_PASSWORD`
+A camada financeira usa fingerprint de idempotencia, ledger e rastreamento das fases de operacoes SQL + inventario. Replays com parametros diferentes sao rejeitados; quedas ambiguas viram `RECONCILIATION_REQUIRED`, evitando estornos automaticos que poderiam duplicar ou apagar patrimonio.
 
-Configure o arquivo de server config do mod com os mesmos dados do PostgreSQL.
+Veja `CHANGELOG.md` e `docs/DATABASE_WEB_SECURITY.md`.
 
-### Principais Recursos
+## Build
 
-- Criacao e login de conta bancaria
-- Caixa eletronico para saldo, deposito, saque, cartoes, credito e transferencia
-- Cartoes de debito, credito e debito/credito
-- Dinheiro em especie
-- Loja de venda e loja de compra entre jogadores
-- Pagamento por cartao ou dinheiro nas lojas
-- Bancada do banco para trocar ouro
-- Preco dinamico do ouro por demanda
-- Persistencia SQL para servidores multiplayer
+```bash
+./gradlew build
+```
+
+Requer Java 21 e acesso aos repositorios Gradle/NeoForge quando as dependencias ainda nao estiverem em cache.

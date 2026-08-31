@@ -16,6 +16,11 @@ import br.com.economiamod.server.mail.MailBlockRepository;
 import br.com.economiamod.server.mail.MailInventoryService;
 import br.com.economiamod.server.mail.MailRecipientRecord;
 import br.com.economiamod.server.mail.MailRecipientRepository;
+import br.com.economiamod.server.operation.EconomyOperationService;
+import br.com.economiamod.server.operation.EconomyOperationState;
+import br.com.economiamod.server.operation.EconomyOperationType;
+import br.com.economiamod.server.operation.OperationStartResult;
+import br.com.economiamod.server.operation.OperationStartType;
 import br.com.economiamod.server.transaction.AccountFinancialService;
 import br.com.economiamod.server.transaction.CardPaymentService;
 import br.com.economiamod.server.transaction.CreditPurchaseResultType;
@@ -67,6 +72,7 @@ public final class MailMenu extends AbstractContainerMenu {
     private final CardValidationService cardValidationService = new CardValidationService(cardItemDataService);
     private final CardPaymentService cardPaymentService = new CardPaymentService(cardValidationService);
     private final AccountFinancialService accountFinancialService = new AccountFinancialService();
+    private final EconomyOperationService operationService = new EconomyOperationService();
     private final HolderLookup.Provider registries;
     private final BlockPos accessPos;
     private final Block expectedBlock;
@@ -394,17 +400,71 @@ public final class MailMenu extends AbstractContainerMenu {
             syncState(player);
             return;
         }
+
+        String requestToken = stableRequestId(requestId);
+        String operationKey = "mail-payment:" + mailBlockId + ":" + player.getUUID() + ":" + requestToken;
+        try {
+            OperationStartResult start = operationService.begin(operationKey, EconomyOperationType.MAIL_PAYMENT,
+                    player.getUUID(), shipmentOperationPayload(total, "cash", change));
+            if (start.type() == OperationStartType.DUPLICATE_COMPLETED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_success"));
+                return;
+            }
+            if (start.type() != OperationStartType.CREATED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+                return;
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao registrar pagamento do Correio.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+            return;
+        }
+
+        try {
+            if (!operationService.mark(operationKey, EconomyOperationState.ITEMS_RESERVED)) {
+                operationService.markReconciliationRequired(operationKey, "unable to reserve mail cash payment");
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+                return;
+            }
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.warn("Falha ao reservar pagamento em dinheiro do Correio.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+            return;
+        }
+
         if (change > 0L && !creditChange(player, requestId, change, confirmOwnerChange)) {
+            try {
+                operationService.mark(operationKey, EconomyOperationState.ROLLED_BACK);
+            } catch (SQLException ignored) {
+            }
             player.sendSystemMessage(Component.translatable("commands.economia.mail.change_failed"));
             return;
         }
-        cashContainer.clearContent();
-        returnCard(player);
-        changeWarningFlag = 0;
-        paymentOpen = false;
-        finishPaidShipment(player);
-        syncState(player);
-        player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_success"));
+        try {
+            if (!operationService.mark(operationKey, EconomyOperationState.SQL_COMMITTED)) {
+                operationService.markReconciliationRequired(operationKey, change > 0L
+                        ? "mail change credited but state transition failed"
+                        : "mail cash payment could not enter committed state");
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+                return;
+            }
+            cashContainer.clearContent();
+            returnCard(player);
+            changeWarningFlag = 0;
+            paymentOpen = false;
+            if (!finishPaidShipment(player)) {
+                operationService.markReconciliationRequired(operationKey, "cash payment consumed but shipment was not persisted");
+                syncState(player);
+                return;
+            }
+            operationService.mark(operationKey, EconomyOperationState.ITEMS_DELIVERED);
+            operationService.mark(operationKey, EconomyOperationState.COMPLETED);
+            syncState(player);
+            player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_success"));
+        } catch (SQLException exception) {
+            EconomiaMod.LOGGER.error("Pagamento em dinheiro do Correio exige reconciliacao.", exception);
+            player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+        }
     }
 
     public void payCard(ServerPlayer player, UUID requestId, boolean creditPayment) {
@@ -424,25 +484,51 @@ public final class MailMenu extends AbstractContainerMenu {
             player.sendSystemMessage(Component.translatable("commands.economia.mail.no_card"));
             return;
         }
+        String requestToken = stableRequestId(requestId);
+        String operationKey = "mail-payment:" + mailBlockId + ":" + player.getUUID() + ":" + requestToken;
         try {
-            String key = "mail-card:" + mailBlockId + ":" + player.getUUID() + ":" + stableRequestId(requestId);
+            OperationStartResult startResult = operationService.begin(operationKey, EconomyOperationType.MAIL_PAYMENT,
+                    player.getUUID(), shipmentOperationPayload(total, creditPayment ? "credit" : "debit", 0L));
+            if (startResult.type() == OperationStartType.DUPLICATE_COMPLETED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_success"));
+                return;
+            }
+            if (startResult.type() != OperationStartType.CREATED) {
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+                return;
+            }
+
+            if (!operationService.mark(operationKey, EconomyOperationState.ITEMS_RESERVED)) {
+                operationService.markReconciliationRequired(operationKey, "unable to reserve mail card payment");
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+                return;
+            }
+
+            String key = "mail-card:" + mailBlockId + ":" + player.getUUID() + ":" + requestToken;
+            boolean paid;
             if (creditPayment) {
                 var result = cardPaymentService.creditPurchase(card, ownerAccountId, total, player.getUUID(), "Correio", key);
-                if (result.type() != CreditPurchaseResultType.COMPLETED && result.type() != CreditPurchaseResultType.DUPLICATE_COMPLETED) {
-                    player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
-                    return;
-                }
+                paid = result.type() == CreditPurchaseResultType.COMPLETED;
             } else {
                 var result = cardPaymentService.debitPurchase(card, ownerAccountId, total, player.getUUID(), key);
-                if (result.type() != DebitPurchaseResultType.COMPLETED && result.type() != DebitPurchaseResultType.DUPLICATE_COMPLETED) {
-                    player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
-                    return;
-                }
+                paid = result.type() == DebitPurchaseResultType.COMPLETED;
             }
+            if (!paid) {
+                operationService.markReconciliationRequired(operationKey, "card payment was not a fresh completed transaction");
+                player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_failed"));
+                return;
+            }
+            operationService.mark(operationKey, EconomyOperationState.SQL_COMMITTED);
             returnCard(player);
             changeWarningFlag = 0;
             paymentOpen = false;
-            finishPaidShipment(player);
+            if (!finishPaidShipment(player)) {
+                operationService.markReconciliationRequired(operationKey, "card charged but shipment was not persisted");
+                syncState(player);
+                return;
+            }
+            operationService.mark(operationKey, EconomyOperationState.ITEMS_DELIVERED);
+            operationService.mark(operationKey, EconomyOperationState.COMPLETED);
             syncState(player);
             player.sendSystemMessage(Component.translatable("commands.economia.mail.payment_success"));
         } catch (SQLException exception) {
@@ -758,7 +844,7 @@ public final class MailMenu extends AbstractContainerMenu {
             }
             String key = "mail-cash-change:" + mailBlockId + ":" + player.getUUID() + ":" + stableRequestId(requestId);
             var result = accountFinancialService.deposit(player.getUUID(), destinationAccount, change, key);
-            return result.type() == FinancialOperationResultType.COMPLETED || result.type() == FinancialOperationResultType.DUPLICATE_COMPLETED;
+            return result.type() == FinancialOperationResultType.COMPLETED;
         } catch (SQLException exception) {
             EconomiaMod.LOGGER.warn("Falha ao creditar troco do Correio.", exception);
             return false;
@@ -787,20 +873,38 @@ public final class MailMenu extends AbstractContainerMenu {
         }
     }
 
-    private void finishPaidShipment(ServerPlayer player) {
+    private boolean finishPaidShipment(ServerPlayer player) {
         try {
             if (!inventoryService.insertShipment(selectedRecipientId, sendContainer, registries)) {
                 player.sendSystemMessage(Component.translatable("commands.economia.mail.recipient_full"));
-                return;
+                return false;
             }
             sendContainer.clearContent();
             paymentFlag = 0;
             broadcastChanges();
             player.sendSystemMessage(Component.translatable("commands.economia.mail.send_success"));
+            return true;
         } catch (SQLException exception) {
             EconomiaMod.LOGGER.warn("Falha ao finalizar envio pago do Correio.", exception);
             player.sendSystemMessage(Component.translatable("commands.economia.mail.send_failed"));
+            return false;
         }
+    }
+
+    private String shipmentOperationPayload(long total, String paymentMethod, long change) {
+        StringBuilder payload = new StringBuilder(256)
+                .append("recipient=").append(selectedRecipientId)
+                .append(";total=").append(total)
+                .append(";method=").append(paymentMethod)
+                .append(";change=").append(change);
+        for (int slot = 0; slot < sendContainer.getContainerSize(); slot++) {
+            ItemStack stack = sendContainer.getItem(slot);
+            if (!stack.isEmpty()) {
+                payload.append(";slot").append(slot).append('=')
+                        .append(stack.saveOptional(registries));
+            }
+        }
+        return payload.toString();
     }
 
     private void returnCard(ServerPlayer player) {

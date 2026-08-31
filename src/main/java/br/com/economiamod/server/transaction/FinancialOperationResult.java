@@ -15,6 +15,10 @@ public record FinancialOperationResult(
         return new FinancialOperationResult(FinancialOperationResultType.DUPLICATE_COMPLETED, transactionId, balanceAfter);
     }
 
+    public static FinancialOperationResult idempotencyConflict() {
+        return new FinancialOperationResult(FinancialOperationResultType.IDEMPOTENCY_CONFLICT, null, 0L);
+    }
+
     public static FinancialOperationResult insufficientBalance() {
         return new FinancialOperationResult(FinancialOperationResultType.INSUFFICIENT_BALANCE, null, 0L);
     }
@@ -23,4 +27,3 @@ public record FinancialOperationResult(
         return new FinancialOperationResult(FinancialOperationResultType.INACTIVE_ACCOUNT, null, 0L);
     }
 }
-

@@ -9,6 +9,10 @@ public record CreditPurchaseResult(CreditPurchaseResultType type) {
         return new CreditPurchaseResult(CreditPurchaseResultType.DUPLICATE_COMPLETED);
     }
 
+    public static CreditPurchaseResult idempotencyConflict() {
+        return new CreditPurchaseResult(CreditPurchaseResultType.IDEMPOTENCY_CONFLICT);
+    }
+
     public static CreditPurchaseResult invalidCard() {
         return new CreditPurchaseResult(CreditPurchaseResultType.INVALID_CARD);
     }

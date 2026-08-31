@@ -7,6 +7,6 @@ public enum EconomyOperationState {
     ITEMS_DELIVERED,
     COMPLETED,
     ROLLBACK_REQUIRED,
+    RECONCILIATION_REQUIRED,
     ROLLED_BACK
 }
-

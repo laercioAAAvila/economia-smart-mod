@@ -46,7 +46,9 @@ public final class ClaimLimitUpgradeService {
         MenuPaymentResult payment = payments.pay(player, record.method(), card, cash, record.amount(),
                 "Upgrade de Claim", "claim-upgrade:" + record.id());
         if (!payment.success()) {
-            deletePending(record.id());
+            if (!ambiguousPayment(payment)) {
+                deletePending(record.id());
+            }
             return GroupOperationResult.denied("payment_" + payment.code());
         }
         complete(record);
@@ -235,6 +237,11 @@ public final class ClaimLimitUpgradeService {
 
     private boolean authorized(GroupMembership membership) {
         return membership != null && (membership.role() == GroupRole.OWNER || membership.role().leadsClan());
+    }
+
+    private boolean ambiguousPayment(MenuPaymentResult payment) {
+        return "reconciliation_required".equals(payment.code())
+                || "idempotency_conflict".equals(payment.code());
     }
 
     private UpgradeRecord findPending(Connection connection, UUID groupId) throws SQLException {
