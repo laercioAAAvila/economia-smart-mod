@@ -99,16 +99,27 @@ public final class GroupRepository {
 
     public void updateLastActivity(UUID playerUuid, long activeMillis) throws SQLException {
         String sql = """
-                UPDATE economy_group_members m
-                   SET last_active_millis = GREATEST(last_active_millis, ?), updated_at = CURRENT_TIMESTAMP
-                  FROM economy_groups g
-                 WHERE m.group_id = g.id AND m.player_uuid = ? AND g.server_uuid = ? AND g.status = 'ACTIVE'
+                UPDATE economy_group_members
+                   SET last_active_millis = CASE
+                           WHEN last_active_millis < ? THEN ?
+                           ELSE last_active_millis
+                       END,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE player_uuid = ?
+                   AND EXISTS (
+                       SELECT 1
+                         FROM economy_groups g
+                        WHERE g.id = economy_group_members.group_id
+                          AND g.server_uuid = ?
+                          AND g.status = 'ACTIVE'
+                   )
                 """;
         try (Connection connection = EconomyDatabase.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, activeMillis);
-            statement.setObject(2, playerUuid);
-            statement.setObject(3, BankServerIdentityService.INSTANCE.current());
+            statement.setLong(2, activeMillis);
+            statement.setObject(3, playerUuid);
+            statement.setObject(4, BankServerIdentityService.INSTANCE.current());
             statement.executeUpdate();
         }
     }
