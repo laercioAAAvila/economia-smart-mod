@@ -42,8 +42,10 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalLong;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.network.FriendlyByteBuf;
@@ -82,6 +84,14 @@ public class PlayerShopMenu extends AbstractContainerMenu {
     private final SimpleContainer sellInputContainer = new SimpleContainer(9);
     private final SimpleContainer cashContainer = new SimpleContainer(9);
     private final SimpleContainer stockContainer = new SimpleContainer(9);
+    /**
+     * The owner's open management menu per shop. Each menu holds its own copy of stock and cash; up to 0.5.1 a
+     * customer could trade while the owner (or another customer) worked on an older copy, the later save failed on
+     * its version check without telling anyone, and the items had already been handed over: the stock was duplicated.
+     * Now nobody trades while the owner manages the shop, and every trade first reloads the shop (see
+     * {@link #refreshForTrade}).
+     */
+    private static final Map<UUID, PlayerShopMenu> OWNER_SESSIONS = new ConcurrentHashMap<>();
     private final CommercialInventoryRepository inventoryRepository = new CommercialInventoryRepository();
     private final CommercialOwnerRepository ownerRepository = new CommercialOwnerRepository();
     private final ItemStackSnapshotMapper snapshotMapper = new ItemStackSnapshotMapper();
@@ -130,6 +140,9 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         loadPersistentState();
         addShopSlots();
         addPlayerInventorySlots(inventory);
+        if (owner && commercialBlockId != null) {
+            OWNER_SESSIONS.put(commercialBlockId, this);
+        }
     }
 
     protected PlayerShopMenu(MenuType<?> menuType, int containerId, Inventory inventory, ShopKind shopKind, FriendlyByteBuf data) {
@@ -275,6 +288,13 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         if (serverOwner || commercialBlockId == null) {
             return;
         }
+        if (ownerManaging(player)) {
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.owner_managing"));
+            return;
+        }
+        if (!refreshForTrade(player)) {
+            return;
+        }
         if (!active()) {
             player.sendSystemMessage(Component.translatable("commands.economia.shop.inactive"));
             return;
@@ -354,6 +374,9 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         super.removed(player);
         if (serverOwner && player instanceof ServerPlayer serverPlayer) {
             saveInventories(serverPlayer);
+        }
+        if (serverOwner && commercialBlockId != null) {
+            OWNER_SESSIONS.remove(commercialBlockId, this);
         }
         clearContainer(player, paymentContainer);
         clearContainer(player, cardContainer);
@@ -631,6 +654,61 @@ public class PlayerShopMenu extends AbstractContainerMenu {
         player.sendSystemMessage(Component.translatable("commands.economia.shop.sell_success"));
     }
 
+    /**
+     * Reloads stock, cash, reference, price and quantities from the database right before a trade, so the trade and
+     * its saves work on what is stored now and not on the copy loaded when this menu opened. If what the customer
+     * was looking at changed (item, price, quantity or state), the trade stops and the menu shows the shop as it is.
+     */
+    /** Closes (and so saves) the owner's management menu of a shop about to be removed. */
+    public static void closeOwnerSession(net.minecraft.server.MinecraftServer server, UUID commercialBlockId) {
+        if (server == null || commercialBlockId == null) {
+            return;
+        }
+        PlayerShopMenu session = OWNER_SESSIONS.get(commercialBlockId);
+        if (session == null) {
+            return;
+        }
+        ServerPlayer owner = server.getPlayerList().getPlayer(session.ownerPlayerUuid);
+        if (owner != null && owner.containerMenu == session) {
+            owner.closeContainer();
+        }
+        OWNER_SESSIONS.remove(commercialBlockId, session);
+    }
+
+    private boolean ownerManaging(ServerPlayer customer) {
+        PlayerShopMenu session = OWNER_SESSIONS.get(commercialBlockId);
+        if (session == null) {
+            return false;
+        }
+        ServerPlayer owner = customer.server.getPlayerList().getPlayer(ownerPlayerUuid);
+        if (owner == null || owner.containerMenu != session) {
+            // The owner left without the menu closing normally: drop the stale session.
+            OWNER_SESSIONS.remove(commercialBlockId, session);
+            return false;
+        }
+        return true;
+    }
+
+    private boolean refreshForTrade(ServerPlayer player) {
+        ItemStack seenReference = referenceContainer.getItem(0).copy();
+        long seenPrice = price;
+        int seenQuantity = quantity;
+        boolean seenActive = active();
+        referenceContainer.clearContent();
+        stockContainer.clearContent();
+        cashContainer.clearContent();
+        loadPersistentState();
+        broadcastChanges();
+        boolean unchanged = ItemStack.matches(seenReference, referenceContainer.getItem(0))
+                && seenPrice == price
+                && seenQuantity == quantity
+                && seenActive == active();
+        if (!unchanged) {
+            player.sendSystemMessage(Component.translatable("commands.economia.shop.updated"));
+        }
+        return unchanged;
+    }
+
     private void loadPersistentState() {
         if (commercialBlockId == null) {
             return;
@@ -728,7 +806,9 @@ public class PlayerShopMenu extends AbstractContainerMenu {
                 }
             }
         } catch (SQLException exception) {
-            EconomiaMod.LOGGER.warn(failureMessage, exception);
+            // With the owner session and the reload before each trade this should not happen; if it does, the
+            // stored shop no longer matches what was handed over and an admin must look at it.
+            EconomiaMod.LOGGER.error(failureMessage + " A loja " + commercialBlockId + " precisa de conferencia.", exception);
         }
     }
 

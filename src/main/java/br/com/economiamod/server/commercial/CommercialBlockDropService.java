@@ -24,7 +24,13 @@ public final class CommercialBlockDropService {
                 if (slot.item().isEmpty()) {
                     continue;
                 }
-                stacks.add(itemStackFactory.create(slot.item(), slot.item().count(), level.registryAccess()));
+                // Product slot 0 is the shop's reference: a copy of the item the owner pointed at (or one sent by
+                // the client for a buying shop), never taken from anyone. Dropping it created an item from nothing on
+                // every break, any item with any components. It is cleared without dropping.
+                boolean reference = type == CommercialInventoryType.PRODUCT_STOCK && slot.slotIndex() == 0;
+                if (!reference) {
+                    stacks.add(itemStackFactory.create(slot.item(), slot.item().count(), level.registryAccess()));
+                }
                 if (!inventoryRepository.updateSlot(slot.id(), CommercialItemSnapshot.empty(), slot.version())) {
                     throw new SQLException("Falha ao limpar slot comercial " + slot.id());
                 }

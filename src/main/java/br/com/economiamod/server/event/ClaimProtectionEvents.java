@@ -24,6 +24,8 @@ import net.minecraft.world.level.block.piston.PistonStructureResolver;
 public final class ClaimProtectionEvents {
     private static final ClaimPermissionService PERMISSIONS = new ClaimPermissionService();
     private static final CommercialOwnerRepository OWNERS = new CommercialOwnerRepository();
+    private static final br.com.economiamod.server.commercial.CommercialBlockLifecycleService COMMERCIAL =
+            new br.com.economiamod.server.commercial.CommercialBlockLifecycleService();
 
     private ClaimProtectionEvents() {
     }
@@ -87,16 +89,36 @@ public final class ClaimProtectionEvents {
             event.getAffectedBlocks().clear();
             return;
         }
+        // Claims are per chunk: ask the database once per chunk, not once per block. A TNT blast touches hundreds of
+        // blocks in a few chunks, and each query ran on the server thread.
+        java.util.Map<Long, Boolean> claimedChunks = new java.util.HashMap<>();
         event.getAffectedBlocks().removeIf(pos -> {
-            try {
-                BlockState state = level.getBlockState(pos);
-                return state.is(ModBlocks.CLAN_CLAIM_BLOCK.get())
-                        || state.is(ModBlocks.PRIVATE_PROPERTY_CLAIM_BLOCK.get())
-                        || PERMISSIONS.claimAt(level, pos).isPresent();
-            } catch (SQLException exception) {
-                EconomiaMod.LOGGER.warn("Falha ao proteger claim contra explosão.", exception);
+            BlockState state = level.getBlockState(pos);
+            if (state.is(ModBlocks.CLAN_CLAIM_BLOCK.get()) || state.is(ModBlocks.PRIVATE_PROPERTY_CLAIM_BLOCK.get())) {
                 return true;
             }
+            long chunk = net.minecraft.world.level.ChunkPos.asLong(pos.getX() >> 4, pos.getZ() >> 4);
+            Boolean claimed = claimedChunks.get(chunk);
+            if (claimed == null) {
+                try {
+                    claimed = PERMISSIONS.claimAt(level, pos).isPresent();
+                } catch (SQLException exception) {
+                    EconomiaMod.LOGGER.warn("Falha ao proteger claim contra explosão.", exception);
+                    claimed = true;
+                }
+                claimedChunks.put(chunk, claimed);
+            }
+            return claimed;
+        });
+        event.getAffectedBlocks().removeIf(pos -> {
+            BlockState state = level.getBlockState(pos);
+            if (state.is(ModBlocks.BANK_COUNTER.get())) {
+                return true;
+            }
+            if (COMMERCIAL.isCommercialBlock(state)) {
+                return !COMMERCIAL.destroyedByExplosion(level, pos);
+            }
+            return false;
         });
     }
 

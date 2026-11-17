@@ -317,6 +317,14 @@ public final class BankCounterMenu extends AbstractContainerMenu {
             return;
         }
         try {
+            // Redeeming takes money out of the card's account with no password and no daily limit, so only the
+            // account holder may do it: a lost or stolen card could otherwise turn the whole balance into gold.
+            UUID holder = new br.com.economiamod.server.account.AccountQueryService()
+                    .findActivePlayerUuid(card.accountId()).orElse(null);
+            if (!player.getUUID().equals(holder)) {
+                player.sendSystemMessage(Component.translatable("commands.economia.bank_counter.redeem_holder_only"));
+                return;
+            }
             GoldRedeemUnit redeemUnit = GoldRedeemUnit.byId(unit);
             long goldUnits = Math.multiplyExact((long) amount, redeemUnit.nuggetUnits);
             String transactionKey = "bank-counter-redeem:" + player.getUUID() + ":" + stableRequestId(requestId);

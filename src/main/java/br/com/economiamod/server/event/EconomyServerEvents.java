@@ -150,6 +150,7 @@ public final class EconomyServerEvents {
 
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         BankSessionService.INSTANCE.logout(event.getEntity().getUUID());
+        br.com.economiamod.server.security.PasswordAttemptLimiter.INSTANCE.forget(event.getEntity().getUUID());
         ClaimPurchaseSessionService.INSTANCE.clear(event.getEntity().getUUID());
         GroupChatService.INSTANCE.logout(event.getEntity().getUUID());
     }

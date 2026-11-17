@@ -15,6 +15,12 @@ public final class ShopActionPayloadHandler {
         if (!(player instanceof ServerPlayer serverPlayer) || !(serverPlayer.containerMenu instanceof PlayerShopMenu shopMenu)) {
             return;
         }
+        // The server closes a menu whose block is gone or too far only on its tick; a packet arriving before that
+        // must not act on a shop/mailbox that was just broken or left behind.
+        if (!shopMenu.stillValid(serverPlayer)) {
+            serverPlayer.closeContainer();
+            return;
+        }
 
         switch (payload.action()) {
             case SAVE_CONFIG -> shopMenu.saveOwnerConfig(serverPlayer, payload.price(), payload.quantity(), payload.active());

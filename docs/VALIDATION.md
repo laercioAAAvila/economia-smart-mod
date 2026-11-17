@@ -1,3 +1,13 @@
+# Validacao do pacote 0.5.2
+
+Data: 2026-11-17
+
+- `./gradlew clean build`: compilacao e jar gerados.
+- `./gradlew runGameTestServer` com SQLite (padrao): 5/5 GameTests passaram.
+- `./gradlew runGameTestServer` com PostgreSQL 16 em Docker (container descartavel, porta 55433): 30 migracoes aplicadas, 5/5 GameTests passaram.
+- Os mesmos GameTests rodados contra o codigo 0.5.1 falharam como esperado: o correio ficou com 6 terra e 0 pedra (a encomenda de 5 terra + 3 pedra sumiu), a loja entregou 1 + 1 diamantes com 1 em estoque, quebrar a loja de compra fez aparecer 1 lingote de netherite (a referencia enviada pelo cliente) e outro jogador nao conseguia quebrar um correio fora de claim.
+- Busca de pagamento exato conferida em 3.000 casos aleatorios contra busca exaustiva: nenhuma divergencia, no maximo ~2.900 passos; valor impar so com cedulas pares responde na hora.
+
 # Validacao do pacote 0.5.1
 
 Data: 2026-08-31

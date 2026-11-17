@@ -461,7 +461,7 @@ Poderá:
 
 Entretanto:
 
-> O Vice-líder NÃO poderá quebrar o Bloco de Claim.
+> O Vice-líder pode quebrar o Bloco de Claim (desde a 0.5.2).
 
 Também não poderá desfazer o Clã.
 
@@ -498,11 +498,12 @@ Somente:
 
 ```text
 Líder do Clã
+Vice-líder do Clã
 ```
 
-poderá quebrar.
+poderão quebrar (atualizado na 0.5.2; antes somente o Líder).
 
-O Vice-líder poderá colocar, mas não poderá destruir.
+Membros comuns do Clã não podem quebrar o Bloco de Claim, nem com `D`.
 
 ## Propriedade Privada
 
@@ -1240,6 +1241,10 @@ Resultado:
 ```text
 D NÃO permite quebrar a loja.
 ```
+
+---
+
+Fora de qualquer Claim (desde a 0.5.2), Loja, Correio e Caixa Eletrônico não têm proteção própria: qualquer jogador pode quebrá-los e o que estiver guardado neles cai no chão. A proteção desses blocos vem somente do Claim do Clã ou da Propriedade Privada onde estão. Comprar e vender numa loja continua permitido a forasteiros dentro de qualquer território; quebrar ou mexer no estoque, não.
 
 ---
 

@@ -13,6 +13,10 @@ public final class BankCounterActionPayloadHandler {
     public static void handle(BankCounterActionPayload payload, IPayloadContext context) {
         Player player = context.player();
         if (player instanceof ServerPlayer serverPlayer && serverPlayer.containerMenu instanceof BankCounterMenu menu) {
+            if (!menu.stillValid(serverPlayer)) {
+                serverPlayer.closeContainer();
+                return;
+            }
             if (payload.action() == BankCounterActionPayload.ACTION_MINT) {
                 menu.mintGold(serverPlayer, payload.requestId());
             } else if (payload.action() == BankCounterActionPayload.ACTION_REDEEM) {

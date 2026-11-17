@@ -69,6 +69,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import br.com.economiamod.common.account.AccountNameNormalizer;
+import br.com.economiamod.server.security.PasswordAttemptLimiter;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -123,6 +125,10 @@ public final class SecureAccountPayloadHandler {
             serverPlayer.sendSystemMessage(Component.translatable("commands.economia.atm.card_login.open_atm"));
             return;
         }
+        if (!serverPlayer.containerMenu.stillValid(serverPlayer)) {
+            serverPlayer.closeContainer();
+            return;
+        }
 
         try {
             switch (payload.action()) {
@@ -167,9 +173,23 @@ public final class SecureAccountPayloadHandler {
             return;
         }
 
+        String usernameKey = AccountNameNormalizer.normalize(payload.username());
+        if (!PasswordAttemptLimiter.INSTANCE.loginAllowed(player.getUUID(), usernameKey)) {
+            player.sendSystemMessage(Component.translatable("commands.economia.account.login.too_many_attempts"));
+            return;
+        }
+        if (!passwordBudget(player)) {
+            return;
+        }
         char[] password = payload.password().toCharArray();
         try {
             AuthenticateAccountResult result = ACCOUNT_SERVICE.authenticate(payload.username(), password);
+            if (result.type() == br.com.economiamod.server.account.AuthenticateAccountResultType.AUTHENTICATED) {
+                PasswordAttemptLimiter.INSTANCE.clearLoginFailures(player.getUUID(), usernameKey);
+            } else if (result.type() == br.com.economiamod.server.account.AuthenticateAccountResultType.NOT_FOUND
+                    || result.type() == br.com.economiamod.server.account.AuthenticateAccountResultType.INVALID_PASSWORD) {
+                PasswordAttemptLimiter.INSTANCE.recordLoginFailure(player.getUUID(), usernameKey);
+            }
             switch (result.type()) {
                 case AUTHENTICATED -> {
                     BankSessionService.INSTANCE.startSession(player, result.accountId(), result.username(), result.accountNumber(), true);
@@ -225,6 +245,9 @@ public final class SecureAccountPayloadHandler {
             return;
         }
 
+        if (!passwordBudget(player)) {
+            return;
+        }
         char[] password = payload.password().toCharArray();
         try {
             if (!(player.containerMenu instanceof AtmMenu atmMenu) || !atmMenu.accountOpeningVisible()) {
@@ -255,6 +278,9 @@ public final class SecureAccountPayloadHandler {
     private static void changePassword(ServerPlayer player, SecureAccountPayload payload) throws SQLException {
         if (!validLegacyPassword(payload.password()) || !validNewPassword(payload.newPassword())) {
             player.sendSystemMessage(Component.translatable("commands.economia.account.password.length"));
+            return;
+        }
+        if (!passwordBudget(player)) {
             return;
         }
 
@@ -302,6 +328,9 @@ public final class SecureAccountPayloadHandler {
             return;
         }
 
+        if (!passwordBudget(player)) {
+            return;
+        }
         char[] newPassword = payload.newPassword().toCharArray();
         try {
             ChangePasswordResult result = ACCOUNT_SERVICE.recoverPassword(
@@ -823,6 +852,9 @@ public final class SecureAccountPayloadHandler {
     }
 
     private static boolean verifySensitiveActionPassword(ServerPlayer player, BankSession session, String passwordText) throws SQLException {
+        if (!passwordBudget(player)) {
+            return false;
+        }
         char[] password = passwordText == null ? new char[0] : passwordText.toCharArray();
         try {
             AccountPasswordVerificationResultType result = ACCOUNT_SERVICE.verifyPassword(session.accountId(), password);
@@ -841,9 +873,31 @@ public final class SecureAccountPayloadHandler {
         }
     }
 
+    /**
+     * Each password check is a PBKDF2 derivation on the server thread; a player gets a few per ten seconds, so a
+     * modified client cannot hold the server busy or guess passwords quickly.
+     */
+    private static boolean passwordBudget(ServerPlayer player) {
+        if (PasswordAttemptLimiter.INSTANCE.tryHash(player.getUUID())) {
+            return true;
+        }
+        player.sendSystemMessage(Component.translatable("commands.economia.account.slow_down"));
+        return false;
+    }
+
     private static void handleInvalidSensitivePassword(ServerPlayer player, BankSession session) throws SQLException {
         if (session.showUsername()) {
-            player.sendSystemMessage(Component.translatable("commands.economia.account.password.invalid"));
+            // Username sessions have no card to block: after five wrong passwords the session ends.
+            int usernameAttempts = BankSessionService.INSTANCE.recordInvalidPassword(player);
+            if (usernameAttempts < 5) {
+                player.sendSystemMessage(Component.translatable("commands.economia.account.password.invalid"));
+                return;
+            }
+            BankSessionService.INSTANCE.logout(player);
+            syncSession(player, false, "", "", false);
+            PacketDistributor.sendToPlayer(player, new AtmAccountSummaryPayload(false, 0L, 0L, 0L, 0L, 0L));
+            PacketDistributor.sendToPlayer(player, new AtmOperationHistoryPayload(List.of()));
+            player.sendSystemMessage(Component.translatable("commands.economia.account.login.too_many_attempts"));
             return;
         }
         int attempts = BankSessionService.INSTANCE.recordInvalidPassword(player);

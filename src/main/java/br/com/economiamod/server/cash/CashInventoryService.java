@@ -14,6 +14,12 @@ import net.minecraft.world.item.ItemStack;
 
 public final class CashInventoryService {
     private static final int BANKNOTE_MAX_STACK_SIZE = 64;
+    /**
+     * Upper bound on the exact-change search. Without it an impossible exact payment (for example an odd price paid
+     * only with even notes) tried every combination of the notes held - hundreds of millions of steps on the server
+     * thread for a large price. With the pruning below a payable amount is found in a handful of steps.
+     */
+    private static final int MAX_SELECTION_STEPS = 50_000;
 
     public long totalBanknotes(ServerPlayer player) {
         long total = 0L;
@@ -139,8 +145,28 @@ public final class CashInventoryService {
                 .map(InventoryBanknoteSlot::value)
                 .distinct()
                 .toList();
+        int size = denominations.size();
+        int[] available = new int[size];
+        for (int index = 0; index < size; index++) {
+            long denomination = denominations.get(index);
+            available[index] = slots.stream()
+                    .filter(slot -> slot.value() == denomination)
+                    .mapToInt(slot -> slot.stack().getCount())
+                    .sum();
+        }
+        // Value and common divisor of the notes from each index on, to cut branches that can no longer pay exactly.
+        long[] valueFrom = new long[size + 1];
+        long[] gcdFrom = new long[size + 1];
+        for (int index = size - 1; index >= 0; index--) {
+            valueFrom[index] = Math.addExact(valueFrom[index + 1], Math.multiplyExact(denominations.get(index), available[index]));
+            gcdFrom[index] = gcd(gcdFrom[index + 1], denominations.get(index));
+        }
+        if (valueFrom[0] < amount) {
+            return List.of();
+        }
         List<Integer> selectedCounts = new ArrayList<>();
-        if (!selectCounts(slots, denominations, 0, amount, selectedCounts)) {
+        int[] steps = {0};
+        if (!selectCounts(denominations, available, valueFrom, gcdFrom, 0, amount, selectedCounts, steps)) {
             return List.of();
         }
 
@@ -166,34 +192,53 @@ public final class CashInventoryService {
         return selected;
     }
 
-    private boolean selectCounts(List<InventoryBanknoteSlot> slots, List<Long> denominations, int index, long remaining, List<Integer> selectedCounts) {
+    private boolean selectCounts(List<Long> denominations, int[] available, long[] valueFrom, long[] gcdFrom,
+                                 int index, long remaining, List<Integer> selectedCounts, int[] steps) {
         if (remaining == 0L) {
             while (selectedCounts.size() < denominations.size()) {
                 selectedCounts.add(0);
             }
             return true;
         }
-        if (index >= denominations.size()) {
+        if (index >= denominations.size()
+                || remaining > valueFrom[index]
+                || remaining % gcdFrom[index] != 0L
+                || ++steps[0] > MAX_SELECTION_STEPS) {
             return false;
         }
 
         long denomination = denominations.get(index);
-        int availableCount = slots.stream()
-                .filter(slot -> slot.value() == denomination)
-                .mapToInt(slot -> slot.stack().getCount())
-                .sum();
-        int maxCount = Math.toIntExact(Math.min(availableCount, remaining / denomination));
+        int maxCount = Math.toIntExact(Math.min(available[index], remaining / denomination));
+        // The notes after this one must still be able to cover what is left.
+        long rest = valueFrom[index + 1];
+        int minCount = (int) Math.max(0L, Math.min(maxCount, ceilDiv(remaining - rest, denomination)));
 
-        for (int count = maxCount; count >= 0; count--) {
+        for (int count = maxCount; count >= minCount; count--) {
             selectedCounts.add(count);
             long nextRemaining = remaining - Math.multiplyExact(denomination, count);
-            if (selectCounts(slots, denominations, index + 1, nextRemaining, selectedCounts)) {
+            if (selectCounts(denominations, available, valueFrom, gcdFrom, index + 1, nextRemaining, selectedCounts, steps)) {
                 return true;
             }
             selectedCounts.remove(selectedCounts.size() - 1);
+            if (steps[0] > MAX_SELECTION_STEPS) {
+                return false;
+            }
         }
 
         return false;
+    }
+
+    private static long ceilDiv(long value, long divisor) {
+        return value <= 0L ? 0L : (value + divisor - 1L) / divisor;
+    }
+
+    private static long gcd(long a, long b) {
+        while (b != 0L) {
+            long next = a % b;
+            a = b;
+            b = next;
+        }
+        return Math.abs(a);
     }
 
     private List<InventorySlotCapacity> inventoryCapacities(ServerPlayer player) {

@@ -15,6 +15,12 @@ public final class MailActionPayloadHandler {
         if (!(player instanceof ServerPlayer serverPlayer) || !(serverPlayer.containerMenu instanceof MailMenu mailMenu)) {
             return;
         }
+        // The server closes a menu whose block is gone or too far only on its tick; a packet arriving before that
+        // must not act on a shop/mailbox that was just broken or left behind.
+        if (!mailMenu.stillValid(serverPlayer)) {
+            serverPlayer.closeContainer();
+            return;
+        }
 
         switch (payload.action()) {
             case SET_NAME -> mailMenu.setInitialName(serverPlayer, payload.text());

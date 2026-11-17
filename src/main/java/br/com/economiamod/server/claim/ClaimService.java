@@ -252,7 +252,7 @@ public final class ClaimService {
                                              boolean adminOverride) throws SQLException {
         ClaimAnchorRecord anchor = claimRepository.anchorAt(dimension, blockX, blockY, blockZ).orElse(null);
         if (anchor == null || !adminOverride && (anchor.active()
-                ? !controlsGroup(playerUuid, anchor.groupId())
+                ? !canBreakAnchor(playerUuid, anchor.groupId())
                 : !playerUuid.equals(anchor.placedByPlayerUuid()))) {
             return ClaimOperationResult.denied("owner_required");
         }
@@ -331,6 +331,16 @@ public final class ClaimService {
     private boolean isLeader(UUID playerUuid, UUID groupId) throws SQLException {
         return groupId != null && groupRepository.membership(playerUuid, groupId)
                 .map(m -> m.role() == GroupRole.LEADER).orElse(false);
+    }
+
+    /**
+     * Who may break an active Claim Block: the clan leader and vice-leader, or the owner of a private property.
+     * Ordinary members never; anyone else neither (an admin with permission 2 uses the override).
+     */
+    private boolean canBreakAnchor(UUID playerUuid, UUID groupId) throws SQLException {
+        return groupId != null && groupRepository.membership(playerUuid, groupId)
+                .map(m -> m.role() == GroupRole.LEADER || m.role() == GroupRole.VICE_LEADER || m.role() == GroupRole.OWNER)
+                .orElse(false);
     }
 
     private boolean controlsGroup(UUID playerUuid, UUID groupId) throws SQLException {

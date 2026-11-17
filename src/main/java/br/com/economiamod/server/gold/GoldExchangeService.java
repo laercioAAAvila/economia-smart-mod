@@ -143,7 +143,9 @@ public final class GoldExchangeService {
     }
 
     public GoldExchangeResult redeemFromAccount(UUID playerUuid, UUID accountId, long goldUnits, UUID commercialBlockId, String idempotencyKey) throws SQLException {
-        long moneyAmount = GoldUnitConverter.moneyAmount(goldUnits, EconomyServerConfig.BANK_GOLD_NUGGET_VALUE.get());
+        if (goldUnits <= 0L) {
+            return GoldExchangeResult.invalid(GoldExchangeResultType.INVALID_GOLD);
+        }
 
         String key = IdempotencyKeys.requireValid(idempotencyKey);
         String fingerprint = RequestFingerprint.of(EconomyTransactionType.GOLD_REDEMPTION, playerUuid,
@@ -169,6 +171,12 @@ public final class GoldExchangeService {
                     connection.rollback();
                     return GoldExchangeResult.invalid(GoldExchangeResultType.INACTIVE_ACCOUNT);
                 }
+                // The bank never sells gold for less than it pays for it right now. With dynamic pricing the bank
+                // buys at up to 150% of the base value after idle days while it sold at the base value: buying gold
+                // from the bank and selling it straight back made money from nothing.
+                long unitValue = Math.max(EconomyServerConfig.BANK_GOLD_NUGGET_VALUE.get(),
+                        pricingService.currentBuySnapshot(connection).nuggetBuyValue());
+                long moneyAmount = GoldUnitConverter.moneyAmount(goldUnits, unitValue);
                 if (reserve.goldNuggetUnits() < goldUnits) {
                     connection.rollback();
                     return GoldExchangeResult.invalid(GoldExchangeResultType.INSUFFICIENT_RESERVE);
@@ -184,7 +192,7 @@ public final class GoldExchangeService {
                 repository.updateAccountBalance(connection, accountId, balanceAfter);
                 writer.insertTransaction(connection, transactionId, key, EconomyTransactionType.GOLD_REDEMPTION, moneyAmount, playerUuid, accountId, commercialBlockId, fingerprint);
                 writer.insertLedger(connection, transactionId, accountId, LedgerEntryType.CURRENCY_REDEMPTION, moneyAmount, account.balance(), balanceAfter);
-                writer.insertGoldEntry(connection, transactionId, playerUuid, "REDEMPTION", "minecraft:gold_nugget", goldUnits, goldUnits, EconomyServerConfig.BANK_GOLD_NUGGET_VALUE.get(), moneyAmount, commercialBlockId);
+                writer.insertGoldEntry(connection, transactionId, playerUuid, "REDEMPTION", "minecraft:gold_nugget", goldUnits, goldUnits, unitValue, moneyAmount, commercialBlockId);
                 connection.commit();
                 return GoldExchangeResult.completed(goldUnits, moneyAmount, balanceAfter);
             } catch (SQLException | RuntimeException exception) {

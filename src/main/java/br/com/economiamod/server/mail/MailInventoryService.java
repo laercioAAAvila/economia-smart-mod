@@ -51,6 +51,48 @@ public final class MailInventoryService {
         }
     }
 
+    /**
+     * Applies what the owner took out of the mailbox, slot by slot, to what is stored now. The owner's menu holds a
+     * copy loaded when it opened; writing that copy back (as up to 0.5.1) erased any shipment that arrived while the
+     * mailbox was open. Only removals are possible in the receive slots, so "stored minus taken" is always right, also
+     * when a shipment was stacked into the same slot meanwhile. Runs on the server thread with no shipment in between.
+     */
+    public void saveReceivedRemovals(UUID blockId, Container before, Container after, HolderLookup.Provider registries) throws SQLException {
+        inventoryRepository.ensureSlots(blockId, CommercialInventoryType.MAIL_RECEIVED, RECEIVED_SLOTS);
+        List<CommercialInventorySlot> slots = inventoryRepository.loadSlots(blockId, CommercialInventoryType.MAIL_RECEIVED);
+        List<SlotUpdate> updates = new ArrayList<>();
+        for (CommercialInventorySlot slot : slots) {
+            int index = slot.slotIndex();
+            if (index < 0 || index >= before.getContainerSize() || index >= after.getContainerSize()) {
+                continue;
+            }
+            ItemStack was = before.getItem(index);
+            if (was.isEmpty()) {
+                continue;
+            }
+            ItemStack now = after.getItem(index);
+            int left = ItemStack.isSameItemSameComponents(was, now) ? now.getCount() : 0;
+            int taken = was.getCount() - left;
+            if (taken <= 0) {
+                continue;
+            }
+            ItemStack stored = slot.item().isEmpty()
+                    ? ItemStack.EMPTY
+                    : itemStackFactory.create(slot.item(), slot.item().count(), registries);
+            if (!ItemStack.isSameItemSameComponents(stored, was)) {
+                throw new SQLException("mail slot " + index + " no longer holds the item taken from it");
+            }
+            stored.shrink(Math.min(taken, stored.getCount()));
+            updates.add(new SlotUpdate(slot.id(), snapshotMapper.fromStack(stored, registries), slot.version()));
+        }
+        boolean[] saved = inventoryRepository.updateSlots(updates);
+        for (boolean slotSaved : saved) {
+            if (!slotSaved) {
+                throw new SQLException("mail inventory changed concurrently");
+            }
+        }
+    }
+
     public boolean insertShipment(UUID destinationBlockId, Container shipment, HolderLookup.Provider registries) throws SQLException {
         SimpleContainer received = loadReceived(destinationBlockId, registries);
         if (!canInsertAll(received, shipment)) {

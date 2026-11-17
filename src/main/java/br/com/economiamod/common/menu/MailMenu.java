@@ -63,6 +63,8 @@ public final class MailMenu extends AbstractContainerMenu {
 
     private final SimpleContainer sendContainer = new SimpleContainer(18);
     private final SimpleContainer receiveContainer;
+    /** What the receive slots held when last read from the database; the owner's removals are measured against it. */
+    private SimpleContainer receiveSnapshot = new SimpleContainer(18);
     private final SimpleContainer cardContainer = new SimpleContainer(1);
     private final SimpleContainer cashContainer = new SimpleContainer(6);
     private final MailBlockRepository blockRepository = new MailBlockRepository();
@@ -153,6 +155,7 @@ public final class MailMenu extends AbstractContainerMenu {
         this.ownerFlag = owner ? 1 : 0;
         this.namedFlag = named ? 1 : 0;
         this.receiveContainer = loadReceiveContainer();
+        this.receiveSnapshot = copyOf(this.receiveContainer);
 
         addDataSlots();
         addMailSlots();
@@ -621,6 +624,32 @@ public final class MailMenu extends AbstractContainerMenu {
             return;
         }
         super.clicked(slotId, button, clickType, player);
+        // Save what the owner took right away (not only on close): a shipment arriving later is kept, and a crash
+        // while the mailbox is open cannot leave the item both in the player's inventory and in the mailbox.
+        if (serverSide && player instanceof ServerPlayer serverPlayer && receiveChanged()) {
+            try {
+                saveReceivedIfAllowed(serverPlayer);
+            } catch (SQLException exception) {
+                EconomiaMod.LOGGER.warn("Falha ao salvar recebimentos do Correio.", exception);
+            }
+        }
+    }
+
+    private boolean receiveChanged() {
+        for (int slot = 0; slot < receiveContainer.getContainerSize(); slot++) {
+            if (!ItemStack.matches(receiveContainer.getItem(slot), receiveSnapshot.getItem(slot))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static SimpleContainer copyOf(Container container) {
+        SimpleContainer copy = new SimpleContainer(container.getContainerSize());
+        for (int slot = 0; slot < container.getContainerSize(); slot++) {
+            copy.setItem(slot, container.getItem(slot).copy());
+        }
+        return copy;
     }
 
     @Override
@@ -789,9 +818,17 @@ public final class MailMenu extends AbstractContainerMenu {
     }
 
     private void saveReceivedIfAllowed(ServerPlayer player) throws SQLException {
-        if (mailBlockId != null && player.getUUID().equals(ownerPlayerUuid)) {
-            inventoryService.saveReceived(mailBlockId, receiveContainer, registries);
+        if (mailBlockId == null || !player.getUUID().equals(ownerPlayerUuid) || !receiveChanged()) {
+            return;
         }
+        inventoryService.saveReceivedRemovals(mailBlockId, receiveSnapshot, receiveContainer, registries);
+        // Show what is stored now, including shipments that arrived while the mailbox was open.
+        SimpleContainer stored = inventoryService.loadReceived(mailBlockId, registries);
+        for (int slot = 0; slot < receiveContainer.getContainerSize() && slot < stored.getContainerSize(); slot++) {
+            receiveContainer.setItem(slot, stored.getItem(slot).copy());
+        }
+        receiveSnapshot = copyOf(receiveContainer);
+        broadcastChanges();
     }
 
     private void loadRecipients() {

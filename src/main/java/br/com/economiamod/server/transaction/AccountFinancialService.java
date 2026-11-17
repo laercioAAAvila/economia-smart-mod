@@ -101,6 +101,10 @@ public final class AccountFinancialService {
                                              TransactionOrigin origin) throws SQLException {
         requirePositive(amount);
         String key = IdempotencyKeys.requireValid(idempotencyKey);
+        if (amount <= 0L) {
+            // Callers validate too; a zero or negative transfer would move money the wrong way.
+            throw new IllegalArgumentException("transfer amount must be positive");
+        }
         EconomyTransactionType type = cardId == null ? EconomyTransactionType.TRANSFER : EconomyTransactionType.DEBIT_PURCHASE;
         String fingerprint = RequestFingerprint.of(type, playerUuid, sourceAccountId, destinationAccountId, amount, cardId);
 
