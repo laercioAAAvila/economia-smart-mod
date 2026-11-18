@@ -29,6 +29,7 @@ public final class ModCreativeTabs {
                 output.accept(ModItems.DEBIT_CARD.get());
                 output.accept(ModItems.CREDIT_CARD.get());
                 output.accept(ModItems.DEBIT_CREDIT_CARD.get());
+                output.accept(ModItems.GPS.get());
                 output.accept(ModBlocks.ATM_ITEM.get());
                 output.accept(ModBlocks.SELL_SHOP_ITEM.get());
                 output.accept(ModBlocks.BUY_SHOP_ITEM.get());
@@ -81,6 +82,7 @@ public final class ModCreativeTabs {
             event.accept(ModItems.DEBIT_CARD.get());
             event.accept(ModItems.CREDIT_CARD.get());
             event.accept(ModItems.DEBIT_CREDIT_CARD.get());
+            event.accept(ModItems.GPS.get());
         }
     }
 }

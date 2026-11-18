@@ -599,5 +599,11 @@
   "screen.economia.group.private_property_claim_first": "Crie sua primeira propriedade pelo Bloco de Claim Privado.",
   "screen.economia.atm.web_token": "Token web",
   "commands.economia.atm.web_token.created": "Token web: %s (valido por %s segundos). Use uma unica vez no site.",
-  "commands.economia.atm.web_token.unavailable": "Token web indisponivel. Ative a Web API com PostgreSQL."
+  "commands.economia.atm.web_token.unavailable": "Token web indisponivel. Ative a Web API com PostgreSQL.",
+  "item.economia.gps": "GPS",
+  "item.economia.gps.tooltip": "No slot GPS do Curios (ou na mão), mostra o mapa do Economia num canto da tela. Use para abrir o mapa inteiro.",
+  "item.economia.gps.tooltip_zoom": "Zoom do minimapa: %s e %s",
+  "curios.identifier.gps": "GPS",
+  "key.economia.minimap_zoom_in": "Aproximar minimapa do GPS",
+  "key.economia.minimap_zoom_out": "Afastar minimapa do GPS"
 }

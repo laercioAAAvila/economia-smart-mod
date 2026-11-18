@@ -3,6 +3,8 @@ package br.com.economiamod;
 import br.com.economiamod.client.ClientMenuScreens;
 import br.com.economiamod.client.ModKeyMappings;
 import br.com.economiamod.client.MapClientEvents;
+import br.com.economiamod.client.GpsMinimapHud;
+import br.com.economiamod.client.config.EconomyClientConfig;
 import br.com.economiamod.client.ClientBlockEntityRenderers;
 import br.com.economiamod.registry.ModBlocks;
 import br.com.economiamod.registry.ModBlockEntities;
@@ -44,6 +46,10 @@ public final class EconomiaMod {
             modEventBus.addListener(ModKeyMappings::register);
             modEventBus.addListener(ClientBlockEntityRenderers::register);
             NeoForge.EVENT_BUS.addListener(MapClientEvents::onClientTick);
+            EconomyClientConfig.register(modContainer);
+            modEventBus.addListener(GpsMinimapHud::registerLayer);
+            NeoForge.EVENT_BUS.addListener(GpsMinimapHud::onClientTick);
+            NeoForge.EVENT_BUS.addListener(GpsMinimapHud::onLoggingOut);
         }
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerStarting);
         NeoForge.EVENT_BUS.addListener(EconomyServerEvents::onServerStopped);

@@ -1,3 +1,45 @@
+# 0.5.4 — GPS com Minimapa / GPS with Minimap
+
+## PT-BR
+
+- Novo item: **GPS**. Receita sem formato: uma bússola, uma barra de ferro e um pó de redstone.
+- Com o Curios instalado, o jogador ganha um slot próprio chamado **GPS**. Com o GPS nesse slot, o mapa do Economia aparece como minimapa no canto superior direito da tela: o mesmo terreno, claims, localizações salvas e a seta do jogador do mapa da tecla M. O norte fica sempre para cima, e as coordenadas X e Z aparecem embaixo.
+- Sem o Curios, o GPS funciona segurado em qualquer mão. Com o Curios, segurar na mão também mostra o minimapa, e dá para desligar isso na configuração.
+- Zoom do minimapa: **+** e **−** do teclado numérico. Dá para trocar essas teclas em Opções > Controles > Atalhos, na categoria Economia Mod, junto com a tecla M de abrir o mapa, que já estava lá. O zoom escolhido fica salvo. Essas teclas também dão zoom no mapa grande.
+- Clicar com o GPS na mão abre o mapa inteiro.
+- O minimapa desce sozinho quando há ícones de efeitos no canto e some com F1 e F3.
+- O tamanho, o canto da tela e a distância da borda ficam no novo arquivo `config/economia-client.toml`.
+- O minimapa pede ao servidor os claims de perto a cada 30 segundos ou quando você anda 16 chunks.
+- Novos testes conferem a receita, o GPS no slot do Curios e na mão, o zoom e a posição do minimapa.
+- Não muda o banco de dados nem a configuração do servidor.
+
+## EN-US
+
+- New item: the **GPS**. Shapeless recipe: one compass, one iron ingot and one redstone dust.
+- With Curios installed, players get a slot of its own called **GPS**. With the GPS in that slot, the Economia map shows as a minimap in the top-right corner of the screen: the same terrain, claims, saved locations and player arrow as the M map. North is always up, and the X and Z coordinates show below it.
+- Without Curios, the GPS works held in either hand. With Curios, holding it also shows the minimap, and this can be turned off in the config.
+- Minimap zoom: numeric keypad **+** and **−**. You can change these keys in Options > Controls > Key Binds, under Economia Mod, next to the M key that opens the map, which was already there. The chosen zoom is saved. These keys also zoom the big map.
+- Using the GPS in hand opens the full map.
+- The minimap moves down on its own when effect icons are in the corner, and hides with F1 and F3.
+- Size, screen corner and distance from the edge are in the new `config/economia-client.toml` file.
+- The minimap asks the server for nearby claims every 30 seconds or when you walk 16 chunks.
+- New tests check the recipe, the GPS in the Curios slot and in a hand, and the minimap zoom and position.
+- Does not change the database or the server configuration.
+
+# 0.5.3 — Seta do Jogador no Mapa / Player Arrow on the Map
+
+## PT-BR
+
+- No mapa, você agora aparece como uma seta "0>": um círculo azul com uma ponta que mostra para onde você está olhando, e gira junto quando você vira. Antes era só um quadrado azul, sem direção.
+- A seta tem contorno escuro e fica visível sobre qualquer cor de terreno.
+- Não muda o banco de dados nem as configurações.
+
+## EN-US
+
+- On the map you now show up as a "0>" arrow: a blue circle with a point showing where you are looking, turning as you turn. Before it was just a blue square with no direction.
+- The arrow has a dark outline and stays visible over any terrain color.
+- Does not change the database or the configuration.
+
 # 0.5.2 — Lojas, Correio e Banco Seguros / Safe Shops, Mail and Bank
 
 ## PT-BR

@@ -1,8 +1,8 @@
 package br.com.economiamod.client.screen;
 
 import br.com.economiamod.client.ModKeyMappings;
+import br.com.economiamod.client.map.EconomyMapRenderer;
 import br.com.economiamod.client.network.ClientMapDataHandler;
-import br.com.economiamod.common.group.GroupType;
 import br.com.economiamod.common.group.ChatChannel;
 import br.com.economiamod.common.network.ChatChannelPayload;
 import br.com.economiamod.common.network.MapAction;
@@ -13,9 +13,7 @@ import br.com.economiamod.common.network.OpenClaimChunkMapPayload;
 import br.com.economiamod.common.network.ShareLocationPayload;
 import br.com.economiamod.server.claim.ClaimPriceService;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -23,15 +21,11 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.levelgen.Heightmap;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 public final class EconomyMapScreen extends Screen {
     private static final int SIDEBAR_WIDTH = 176;
-    private static final int TERRAIN_CACHE_LIMIT = 131_072;
-    private static final int TERRAIN_SAMPLES_PER_FRAME = 2_048;
-    private MapDataPayload data = ClientMapDataHandler.empty();
+    private MapDataPayload data = ClientMapDataHandler.latest();
     private ChatChannel selectedChannel = data.selectedChannel();
     private double centerX;
     private double centerZ;
@@ -67,8 +61,7 @@ public final class EconomyMapScreen extends Screen {
     private long selectedPurchasePrice;
     private Button confirmPurchaseButton;
     private Button cancelPurchaseButton;
-    private final Map<Long, Integer> terrainColorCache = new HashMap<>();
-    private int terrainSamplesThisFrame;
+    private final EconomyMapRenderer mapRenderer = new EconomyMapRenderer();
 
     public EconomyMapScreen() {
         this(null, null);
@@ -164,172 +157,39 @@ public final class EconomyMapScreen extends Screen {
         }
     }
 
+    private EconomyMapRenderer.Viewport viewport() {
+        return new EconomyMapRenderer.Viewport(SIDEBAR_WIDTH, 0, width, height, centerX, centerZ, pixelsPerBlock());
+    }
+
     private void drawMap(GuiGraphics graphics) {
-        int left = SIDEBAR_WIDTH;
-        int mapWidth = width - left;
-        int centerScreenX = left + mapWidth / 2;
-        int centerScreenY = height / 2;
-        double pixelsPerBlock = pixelsPerBlock();
-        cursorWorldX = screenToWorldX(lastMouseX, centerScreenX, pixelsPerBlock);
-        cursorWorldZ = screenToWorldZ(lastMouseY, centerScreenY, pixelsPerBlock);
-        int firstChunkX = (int) Math.floor(centerX / 16.0D) - mapWidth / Math.max(1, (int) (16 * pixelsPerBlock)) - 2;
-        int lastChunkX = (int) Math.floor(centerX / 16.0D) + mapWidth / Math.max(1, (int) (16 * pixelsPerBlock)) + 2;
-        int firstChunkZ = (int) Math.floor(centerZ / 16.0D) - height / Math.max(1, (int) (16 * pixelsPerBlock)) - 2;
-        int lastChunkZ = (int) Math.floor(centerZ / 16.0D) + height / Math.max(1, (int) (16 * pixelsPerBlock)) + 2;
-
-        drawLoadedTerrain(graphics, left, centerScreenX, centerScreenY, pixelsPerBlock,
-                firstChunkX, lastChunkX, firstChunkZ, lastChunkZ);
-
-        for (int chunkX = firstChunkX; chunkX <= lastChunkX; chunkX++) {
-            int x = worldToScreenX(chunkX * 16, centerScreenX, pixelsPerBlock);
-            if (x >= left && x < width) {
-                graphics.fill(x, 0, x + 1, height, 0x443A4B53);
+        EconomyMapRenderer.Viewport view = viewport();
+        cursorWorldX = view.toWorldX(lastMouseX);
+        cursorWorldZ = view.toWorldZ(lastMouseY);
+        if (minecraft != null) {
+            // Same drawing as the GPS minimap: terrain, chunk grid, claims and saved places.
+            mapRenderer.drawBase(graphics, minecraft, view, data);
+            if (claimPurchase != null && view.contains(lastMouseX, lastMouseY)) {
+                drawChunkSelection(graphics, view, cursorWorldX >> 4, cursorWorldZ >> 4);
             }
-        }
-        for (int chunkZ = firstChunkZ; chunkZ <= lastChunkZ; chunkZ++) {
-            int y = worldToScreenY(chunkZ * 16, centerScreenY, pixelsPerBlock);
-            graphics.fill(left, y, width, y + 1, 0x443A4B53);
-        }
-
-        String dimension = minecraft != null && minecraft.level != null
-                ? minecraft.level.dimension().location().toString() : "";
-        for (MapDataPayload.ClaimSummary claim : data.claims()) {
-            if (!dimension.equals(claim.dimension())) {
-                continue;
+            String dimension = EconomyMapRenderer.dimension(minecraft);
+            if (sharedLocation != null && !sharedResolved && dimension.equals(sharedLocation.dimension())) {
+                int sharedX = view.toScreenX(sharedLocation.x());
+                int sharedZ = view.toScreenY(sharedLocation.z());
+                if (view.contains(sharedX, sharedZ)) {
+                    graphics.fill(sharedX - 4, sharedZ - 4, sharedX + 5, sharedZ + 5, 0xFFE040FB);
+                }
             }
-            int x1 = worldToScreenX(claim.chunkX() * 16, centerScreenX, pixelsPerBlock);
-            int y1 = worldToScreenY(claim.chunkZ() * 16, centerScreenY, pixelsPerBlock);
-            int x2 = worldToScreenX((claim.chunkX() + 1) * 16, centerScreenX, pixelsPerBlock);
-            int y2 = worldToScreenY((claim.chunkZ() + 1) * 16, centerScreenY, pixelsPerBlock);
-            int claimLeft = Math.max(left, Math.min(x1, x2) + 1);
-            int claimTop = Math.max(0, Math.min(y1, y2) + 1);
-            int claimRight = Math.min(width, Math.max(x1, x2));
-            int claimBottom = Math.min(height, Math.max(y1, y2));
-            if (claimRight > claimLeft && claimBottom > claimTop) {
-                graphics.fill(claimLeft, claimTop, claimRight, claimBottom,
-                        claim.type() == GroupType.CLAN ? 0x6650C878 : 0x66D8893B);
-            }
-        }
-
-        if (claimPurchase != null && lastMouseX >= left && lastMouseX < width
-                && lastMouseY >= 0 && lastMouseY < height) {
-            int selectedChunkX = cursorWorldX >> 4;
-            int selectedChunkZ = cursorWorldZ >> 4;
-            drawChunkSelection(graphics, left, centerScreenX, centerScreenY, pixelsPerBlock,
-                    selectedChunkX, selectedChunkZ);
-        }
-
-        for (MapDataPayload.LocationSummary location : data.locations()) {
-            if (!dimension.equals(location.dimension())) {
-                continue;
-            }
-            int x = worldToScreenX(location.x(), centerScreenX, pixelsPerBlock);
-            int y = worldToScreenY(location.z(), centerScreenY, pixelsPerBlock);
-            if (x >= left && x < width && y >= 0 && y < height) {
-                graphics.fill(x - 3, y - 3, x + 4, y + 4, 0xFFFFD54F);
-            }
-        }
-        if (sharedLocation != null && !sharedResolved && dimension.equals(sharedLocation.dimension())) {
-            int sharedX = worldToScreenX(sharedLocation.x(), centerScreenX, pixelsPerBlock);
-            int sharedZ = worldToScreenY(sharedLocation.z(), centerScreenY, pixelsPerBlock);
-            if (sharedX >= left && sharedX < width && sharedZ >= 0 && sharedZ < height) {
-                graphics.fill(sharedX - 4, sharedZ - 4, sharedX + 5, sharedZ + 5, 0xFFE040FB);
-            }
-        }
-
-        if (minecraft != null && minecraft.player != null) {
-            int playerX = worldToScreenX(minecraft.player.getX(), centerScreenX, pixelsPerBlock);
-            int playerY = worldToScreenY(minecraft.player.getZ(), centerScreenY, pixelsPerBlock);
-            if (playerX >= left && playerX < width && playerY >= 0 && playerY < height) {
-                graphics.fill(playerX - 3, playerY - 3, playerX + 4, playerY + 4, 0xFF4FC3F7);
-            }
+            mapRenderer.drawPlayer(graphics, minecraft, view);
         }
         graphics.drawString(font, Component.translatable("screen.economia.map.coordinates", cursorWorldX, cursorWorldZ),
-                left + 8, height - 18, 0xFFE4ECEF, false);
+                SIDEBAR_WIDTH + 8, height - 18, 0xFFE4ECEF, false);
     }
 
-    private void drawLoadedTerrain(GuiGraphics graphics, int left, int centerScreenX, int centerScreenY,
-                                   double scale, int firstChunkX, int lastChunkX,
-                                   int firstChunkZ, int lastChunkZ) {
-        if (minecraft == null || minecraft.level == null || minecraft.player == null) {
-            return;
-        }
-        int playerChunkX = minecraft.player.chunkPosition().x;
-        int playerChunkZ = minecraft.player.chunkPosition().z;
-        int minChunkX = Math.max(firstChunkX, playerChunkX - 16);
-        int maxChunkX = Math.min(lastChunkX, playerChunkX + 16);
-        int minChunkZ = Math.max(firstChunkZ, playerChunkZ - 16);
-        int maxChunkZ = Math.min(lastChunkZ, playerChunkZ + 16);
-        int chunkPixels = Math.max(1, (int) Math.round(16.0D * scale));
-        int samples = chunkPixels >= 48 ? 8 : chunkPixels >= 12 ? 4 : 2;
-        terrainSamplesThisFrame = 0;
-        graphics.enableScissor(left, 0, width, height);
-        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-                if (!minecraft.level.hasChunk(chunkX, chunkZ)) {
-                    continue;
-                }
-                int chunkLeft = worldToScreenX(chunkX * 16, centerScreenX, scale);
-                int chunkTop = worldToScreenY(chunkZ * 16, centerScreenY, scale);
-                int chunkRight = worldToScreenX((chunkX + 1) * 16, centerScreenX, scale);
-                int chunkBottom = worldToScreenY((chunkZ + 1) * 16, centerScreenY, scale);
-                for (int sampleX = 0; sampleX < samples; sampleX++) {
-                    for (int sampleZ = 0; sampleZ < samples; sampleZ++) {
-                        int blockX = chunkX * 16 + (sampleX * 16 + 8) / samples;
-                        int blockZ = chunkZ * 16 + (sampleZ * 16 + 8) / samples;
-                        int color = terrainColor(blockX, blockZ);
-                        if (color == 0) {
-                            continue;
-                        }
-                        int cellLeft = chunkLeft + (chunkRight - chunkLeft) * sampleX / samples;
-                        int cellTop = chunkTop + (chunkBottom - chunkTop) * sampleZ / samples;
-                        int cellRight = chunkLeft + (chunkRight - chunkLeft) * (sampleX + 1) / samples;
-                        int cellBottom = chunkTop + (chunkBottom - chunkTop) * (sampleZ + 1) / samples;
-                        graphics.fill(cellLeft, cellTop, Math.max(cellLeft + 1, cellRight),
-                                Math.max(cellTop + 1, cellBottom), 0xFF000000 | color);
-                    }
-                }
-            }
-        }
-        graphics.disableScissor();
-    }
-
-    private int terrainColor(int blockX, int blockZ) {
-        long key = BlockPos.asLong(blockX, 0, blockZ);
-        Integer cached = terrainColorCache.get(key);
-        if (cached != null) {
-            return cached;
-        }
-        if (terrainColorCache.size() >= TERRAIN_CACHE_LIMIT) {
-            terrainColorCache.clear();
-        }
-        if (terrainSamplesThisFrame >= TERRAIN_SAMPLES_PER_FRAME) {
-            return 0;
-        }
-        terrainSamplesThisFrame++;
-        int blockY = minecraft.level.getHeight(Heightmap.Types.WORLD_SURFACE, blockX, blockZ) - 1;
-        blockY = Math.max(minecraft.level.getMinBuildHeight(), blockY);
-        BlockPos samplePos = new BlockPos(blockX, blockY, blockZ);
-        var state = minecraft.level.getBlockState(samplePos);
-        if (state.isAir()) {
-            terrainColorCache.put(key, 0);
-            return 0;
-        }
-        int color = state.getMapColor(minecraft.level, samplePos).col;
-        int tint = minecraft.getBlockColors().getColor(state, minecraft.level, samplePos, 0);
-        if (tint != -1) {
-            color = tint;
-        }
-        terrainColorCache.put(key, color);
-        return color;
-    }
-
-    private void drawChunkSelection(GuiGraphics graphics, int left, int centerScreenX, int centerScreenY,
-                                    double scale, int chunkX, int chunkZ) {
-        int x1 = Math.max(left, worldToScreenX(chunkX * 16, centerScreenX, scale));
-        int y1 = Math.max(0, worldToScreenY(chunkZ * 16, centerScreenY, scale));
-        int x2 = Math.min(width, worldToScreenX((chunkX + 1) * 16, centerScreenX, scale));
-        int y2 = Math.min(height, worldToScreenY((chunkZ + 1) * 16, centerScreenY, scale));
+    private void drawChunkSelection(GuiGraphics graphics, EconomyMapRenderer.Viewport view, int chunkX, int chunkZ) {
+        int x1 = Math.max(view.left(), view.toScreenX(chunkX * 16));
+        int y1 = Math.max(view.top(), view.toScreenY(chunkZ * 16));
+        int x2 = Math.min(view.right(), view.toScreenX((chunkX + 1) * 16));
+        int y2 = Math.min(view.bottom(), view.toScreenY((chunkZ + 1) * 16));
         if (x2 > x1 && y2 > y1) {
             graphics.fill(x1, y1, x2, y2, 0x66FFD54F);
             graphics.fill(x1, y1, x2, y1 + 2, 0xFFFFD54F);
@@ -632,6 +492,14 @@ public final class EconomyMapScreen extends Screen {
             closePurchaseConfirmation();
             return true;
         }
+        if (!locationModal && !shareModal && !purchaseConfirmation
+                && (ModKeyMappings.MINIMAP_ZOOM_IN.matches(keyCode, scanCode)
+                || ModKeyMappings.MINIMAP_ZOOM_OUT.matches(keyCode, scanCode))) {
+            // The GPS zoom keys also zoom this map, one scroll-wheel notch at a time.
+            boolean in = ModKeyMappings.MINIMAP_ZOOM_IN.matches(keyCode, scanCode);
+            zoom = Math.max(0.25D, Math.min(4.0D, zoom * (in ? 1.2D : 1.0D / 1.2D)));
+            return true;
+        }
         if (!locationModal && !shareModal && ModKeyMappings.CREATE_LOCATION.matches(keyCode, scanCode)) {
             openLocationModal();
             return true;
@@ -725,21 +593,5 @@ public final class EconomyMapScreen extends Screen {
         PacketDistributor.sendToServer(new MapActionPayload(MapAction.REFRESH, "", "",
                 ((int) Math.floor(centerX)) >> 4, 0, ((int) Math.floor(centerZ)) >> 4,
                 new UUID(0L, 0L)));
-    }
-
-    private int worldToScreenX(double worldX, int screenCenter, double scale) {
-        return (int) Math.round(screenCenter + (worldX - centerX) * scale);
-    }
-
-    private int worldToScreenY(double worldZ, int screenCenter, double scale) {
-        return (int) Math.round(screenCenter + (worldZ - centerZ) * scale);
-    }
-
-    private int screenToWorldX(double screenX, int screenCenter, double scale) {
-        return (int) Math.floor(centerX + (screenX - screenCenter) / scale);
-    }
-
-    private int screenToWorldZ(double screenY, int screenCenter, double scale) {
-        return (int) Math.floor(centerZ + (screenY - screenCenter) / scale);
     }
 }

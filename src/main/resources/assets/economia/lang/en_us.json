@@ -599,5 +599,11 @@
   "screen.economia.group.private_property_claim_first": "Create your first property with the Private Claim Block.",
   "screen.economia.atm.web_token": "Web token",
   "commands.economia.atm.web_token.created": "Web token: %s (valid for %s seconds). Use it once on the website.",
-  "commands.economia.atm.web_token.unavailable": "Web token unavailable. Enable the Web API with PostgreSQL."
+  "commands.economia.atm.web_token.unavailable": "Web token unavailable. Enable the Web API with PostgreSQL.",
+  "item.economia.gps": "GPS",
+  "item.economia.gps.tooltip": "In the Curios GPS slot (or in a hand), shows the Economia map in a corner of the screen. Use it to open the full map.",
+  "item.economia.gps.tooltip_zoom": "Minimap zoom: %s and %s",
+  "curios.identifier.gps": "GPS",
+  "key.economia.minimap_zoom_in": "Zoom GPS minimap in",
+  "key.economia.minimap_zoom_out": "Zoom GPS minimap out"
 }

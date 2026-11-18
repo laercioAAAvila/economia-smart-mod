@@ -8,10 +8,23 @@ public final class ClientMapDataHandler {
     private ClientMapDataHandler() {
     }
 
+    /** Last claims and saved places from the server, also drawn by the GPS minimap. */
+    private static MapDataPayload latest;
+
     public static void handle(MapDataPayload payload) {
+        latest = payload;
         if (Minecraft.getInstance().screen instanceof EconomyMapScreen screen) {
             screen.applyMapData(payload);
         }
+    }
+
+    public static MapDataPayload latest() {
+        return latest != null ? latest : empty();
+    }
+
+    /** Forget the last server's data when leaving it. */
+    public static void clear() {
+        latest = null;
     }
 
     public static MapDataPayload empty() {

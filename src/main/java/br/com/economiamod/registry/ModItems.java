@@ -2,6 +2,7 @@ package br.com.economiamod.registry;
 
 import br.com.economiamod.EconomiaMod;
 import br.com.economiamod.common.item.EconomyCardItem;
+import br.com.economiamod.common.item.GpsItem;
 import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -23,6 +24,7 @@ public final class ModItems {
     public static final DeferredItem<Item> CREDIT_CARD = registerCard("credit_card");
     public static final DeferredItem<Item> DEBIT_CREDIT_CARD = registerCard("debit_credit_card");
     public static final DeferredItem<Item> CREDIT_INVOICE = ITEMS.registerSimpleItem("credit_invoice", new Item.Properties().stacksTo(1));
+    public static final DeferredItem<GpsItem> GPS = ITEMS.register("gps", () -> new GpsItem(new Item.Properties().stacksTo(1)));
 
     private ModItems() {
     }

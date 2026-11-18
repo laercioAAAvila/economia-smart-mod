@@ -5,6 +5,12 @@ plugins {
 }
 
 repositories {
+    mavenCentral()
+    maven {
+        name = "Illusive Soulworks maven"
+        url = "https://maven.theillusivec4.top/"
+        content { includeGroup "top.theillusivec4.curios" }
+    }
     maven {
         name = "Jared's maven"
         url = "https://maven.blamejared.com/"
@@ -89,6 +95,12 @@ dependencies {
     localRuntime "org.xerial:sqlite-jdbc:${sqlite_jdbc_version}"
     localRuntime "com.zaxxer:HikariCP:${hikaricp_version}"
     localRuntime "mezz.jei:jei-${minecraft_version}-neoforge:${jei_version}"
+    // Curios is optional for players: compile only against its public API, full jar only in dev runs.
+    compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}:api"
+    localRuntime "top.theillusivec4.curios:curios-neoforge:${curios_version}"
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     jarJar(group: 'org.postgresql', name: 'postgresql') {
         version {
             prefer postgresql_jdbc_version
@@ -139,6 +151,10 @@ publishing {
             url "file://${project.projectDir}/repo"
         }
     }
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
 }
 
 tasks.withType(JavaCompile).configureEach {
